@@ -38,7 +38,6 @@ async fn main() -> anyhow::Result<()> {
 
                 // Use a one-shot channel for shutdown signal (not hooked here, but ready to use)
                 let (_shutdown_tx, _shutdown_rx) = oneshot::channel::<()>();
-v
 
                 // Run server in current task - this will block until Ctrl+C or shutdown signal
                 println!("Server running... Press Ctrl+C to stop.");
