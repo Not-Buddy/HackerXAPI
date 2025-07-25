@@ -1,4 +1,5 @@
 mod server;
+mod pdf;
 
 use axum::{
     routing::post,
@@ -36,7 +37,8 @@ async fn main() -> anyhow::Result<()> {
                 let listener = TcpListener::bind(addr).await?;
 
                 // Use a one-shot channel for shutdown signal (not hooked here, but ready to use)
-                let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+                let (_shutdown_tx, _shutdown_rx) = oneshot::channel::<()>();
+
 
                 // Run server in current task - this will block until Ctrl+C or shutdown signal
                 println!("Server running... Press Ctrl+C to stop.");
