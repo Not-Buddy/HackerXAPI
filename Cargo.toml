@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tokio = { version = "1.37", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json", "blocking", "stream"] }
+headers = "0.4"
+pdf-extract = "0.7"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0.98"
