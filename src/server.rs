@@ -29,11 +29,15 @@ pub async fn hackrx_run(
     headers: HeaderMap,
     Json(body): Json<QuestionRequest>,
 ) -> Result<Json<AnswersResponse>, Response> {
+    println!("Received request with documents URL: {}", body.documents);
+
     // Authorization check
     let auth = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok());
+
     if auth.is_none() || !auth.unwrap().starts_with("Bearer ") {
+        println!("Request rejected: Missing or invalid Authorization token");
         return Err((
             StatusCode::UNAUTHORIZED,
             "Missing or invalid Authorization token",
@@ -41,11 +45,14 @@ pub async fn hackrx_run(
             .into_response());
     }
 
-    let tmp_path = "/tmp/policy.pdf";
+    println!("Authorization token accepted, starting PDF download...");
 
+    let tmp_path = "/tmp/policy.pdf";
+    let permpath = "pdfs/policy.pdf";
     download_pdf(&body.documents, tmp_path)
         .await
         .map_err(|e| {
+            println!("Failed to download PDF: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("PDF download error: {}", e),
@@ -53,7 +60,22 @@ pub async fn hackrx_run(
                 .into_response()
         })?;
 
+        download_pdf(&body.documents, permpath)
+        .await
+        .map_err(|e| {
+            println!("Failed to download PDF: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("PDF download error: {}", e),
+            )
+                .into_response()
+        })?;
+
+
+    println!("PDF downloaded successfully to {}", tmp_path);
+
     let pdf_text = extract_pdf_text(tmp_path).await.map_err(|e| {
+        println!("Failed to extract PDF text: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("PDF extraction error: {}", e),
@@ -64,6 +86,11 @@ pub async fn hackrx_run(
     // Clean up temp file
     delete_file(tmp_path).ok();
 
+    println!("Processing questions and preparing answers...");
+
     let answers = answer_questions(&pdf_text, &body.questions).await;
+
+    println!("Request processed successfully. Sending response.");
+
     Ok(Json(AnswersResponse { answers }))
 }

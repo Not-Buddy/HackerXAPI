@@ -1,0 +1,4 @@
+//Incase server keeps on running even after u kill it 
+lsof -i :8000
+//Above command will give u the pid that u need to kill
+kill -9 PID_number
