@@ -1,5 +1,6 @@
 use tokio::fs as async_fs;
 use std::fs;
+use lopdf::{Document, Object};
 use pdf_extract;
 use std::path::Path;
 
@@ -12,9 +13,65 @@ pub async fn download_pdf(url: &str, file_path: &str) -> Result<(), Box<StdError
 }
 
 fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
-    let text = pdf_extract::extract_text(file_path)?;
-    Ok(text)
+    use lopdf::{Document, Object, content::Content};
+    use std::fs;
+    use std::path::Path;
+
+    let doc = Document::load(file_path)?;
+
+    // Prepare output folder: pdfs/text/
+    let text_dir = Path::new("pdfs/text");
+    if !text_dir.exists() {
+        fs::create_dir_all(text_dir)?;
+    }
+
+    let mut all_text = String::new();
+
+    // get_pages() returns BTreeMap<u32, ObjectId>
+    for (page_number, page_id) in doc.get_pages() {
+        // Get Content for the page
+        let content = doc.get_page_content(page_id)?;
+        // Decode page content as instructions
+        let content = Content::decode(&content)?;
+        // Extract text from content operations
+        let page_text = content.operations.iter()
+            .filter_map(|op| {
+                if op.operator == "Tj" || op.operator == "'" || op.operator == "\"" {
+                    op.operands.get(0).and_then(|operand| match operand {
+                        Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
+                        _ => None
+                    })
+                } else if op.operator == "TJ" {
+                    op.operands.get(0).and_then(|operand| match operand {
+                        Object::Array(array) => {
+                            Some(array.iter().filter_map(|item| match item {
+                                Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
+                                _ => None
+                            }).collect::<Vec<String>>().join(""))
+                        }
+                        _ => None
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Write this page's text to its file
+        let txt_filename = format!("page_{}.txt", page_number);
+        let txt_path = text_dir.join(&txt_filename);
+        fs::write(&txt_path, &page_text)?;
+
+        println!("Saved page {} to {:?}", page_number, txt_path);
+
+        all_text.push_str(&page_text);
+        all_text.push('\n');
+    }
+
+    Ok(all_text)
 }
+
 
 pub async fn extract_pdf_text(file_path: &str) -> Result<String, Box<StdError>> {
     let file_path = file_path.to_owned();
