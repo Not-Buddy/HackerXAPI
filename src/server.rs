@@ -9,6 +9,8 @@ use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
 
 
+use crate::AI::gemini::call_gemini_api_with_txts;
+
 #[derive(Deserialize)]
 pub struct QuestionRequest {
     pub documents: String,
@@ -20,9 +22,13 @@ pub struct AnswersResponse {
     pub answers: Vec<String>,
 }
 
-pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Vec<String> {
-    questions.iter().map(|q| format!("(Dummy answer): {}", q)).collect()
+pub async fn answer_questions(_pdf_text: &str, questions: &[String],) -> Vec<String> {
+    match call_gemini_api_with_txts(questions).await {
+        Ok(response) => vec![response], // one combined answer string
+        Err(e) => vec![format!("Error calling Gemini API: {}", e)],
+    }
 }
+
 
 
 pub async fn hackrx_run(
