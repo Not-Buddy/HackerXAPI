@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::pdf::delete_file;
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
-
-
-use crate::AI::gemini::call_gemini_api_with_txts;
+use serde_json::json;
+use crate::ai::gemini::call_gemini_api_with_txts;
 
 #[derive(Deserialize)]
 pub struct QuestionRequest {
@@ -17,24 +16,28 @@ pub struct QuestionRequest {
     pub questions: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AnswersResponse {
     pub answers: Vec<String>,
 }
 
-pub async fn answer_questions(_pdf_text: &str, questions: &[String],) -> Vec<String> {
-    match call_gemini_api_with_txts(questions).await {
-        Ok(response) => vec![response], // one combined answer string
-        Err(e) => vec![format!("Error calling Gemini API: {}", e)],
-    }
+pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Result<AnswersResponse, anyhow::Error> {
+    let json_value = call_gemini_api_with_txts(questions).await?;
+
+    let answers_response: AnswersResponse = serde_json::from_value(json_value)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize answers: {}", e))?;
+
+    Ok(answers_response)
 }
+
+
+
 
 
 
 pub async fn hackrx_run(
     headers: HeaderMap,
-    Json(body): Json<QuestionRequest>,
-) -> Result<Json<AnswersResponse>, Response> {
+    Json(body): Json<QuestionRequest>,) -> Result<Json<AnswersResponse>, Response> {
     println!("Received request with documents URL: {}", body.documents);
 
     // Authorization check
@@ -94,9 +97,17 @@ pub async fn hackrx_run(
 
     println!("Processing questions and preparing answers...");
 
-    let answers = answer_questions(&pdf_text, &body.questions).await;
+    let answers_response = answer_questions(&pdf_text, &body.questions)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Answering questions error: {}", e),
+            )
+                .into_response()
+        })?;
 
     println!("Request processed successfully. Sending response.");
 
-    Ok(Json(AnswersResponse { answers }))
+    Ok(Json(answers_response))
 }

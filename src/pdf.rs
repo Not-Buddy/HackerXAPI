@@ -1,7 +1,5 @@
 use tokio::fs as async_fs;
 use std::fs;
-use lopdf::{Document, Object};
-use pdf_extract;
 use std::path::Path;
 
 pub type StdError = dyn std::error::Error + Send + Sync + 'static;
@@ -19,10 +17,10 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
 
     let doc = Document::load(file_path)?;
 
-    // Prepare output folder: pdfs/text/
-    let text_dir = Path::new("pdfs/text");
-    if !text_dir.exists() {
-        fs::create_dir_all(text_dir)?;
+    // Ensure the output folder exists
+    let pdfs_dir = Path::new("pdfs");
+    if !pdfs_dir.exists() {
+        fs::create_dir_all(pdfs_dir)?;
     }
 
     let mut all_text = String::new();
@@ -31,7 +29,7 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
     for (page_number, page_id) in doc.get_pages() {
         // Get Content for the page
         let content = doc.get_page_content(page_id)?;
-        // Decode page content as instructions
+        // Decode PDF instructions/content
         let content = Content::decode(&content)?;
         // Extract text from content operations
         let page_text = content.operations.iter()
@@ -58,16 +56,16 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
             .collect::<Vec<String>>()
             .join("\n");
 
-        // Write this page's text to its file
-        let txt_filename = format!("page_{}.txt", page_number);
-        let txt_path = text_dir.join(&txt_filename);
-        fs::write(&txt_path, &page_text)?;
-
-        println!("Saved page {} to {:?}", page_number, txt_path);
-
+        // Separate pages by newlines
+        all_text.push_str(&format!("==== Page {} ====\n", page_number));
         all_text.push_str(&page_text);
-        all_text.push('\n');
+        all_text.push_str("\n\n");
     }
+
+    // Write all extracted text to pdfs/policy.txt
+    let txt_path = pdfs_dir.join("policy.txt");
+    fs::write(&txt_path, &all_text)?;
+    println!("Saved all extracted text to {:?}", txt_path);
 
     Ok(all_text)
 }
