@@ -8,6 +8,7 @@ use crate::pdf::delete_file;
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
 use crate::ai::gemini::call_gemini_api_with_txts;
+use std::time::Instant;
 
 #[derive(Deserialize)]
 pub struct QuestionRequest {
@@ -29,6 +30,7 @@ pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Result<A
 pub async fn hackrx_run(
     headers: HeaderMap,
     Json(body): Json<QuestionRequest>,) -> Result<Json<AnswersResponse>, Response> {
+    let start_time = Instant::now();
     println!("Received request with documents URL: {}", body.documents);
 
     // Authorization check
@@ -99,6 +101,7 @@ pub async fn hackrx_run(
         })?;
 
     println!("Request processed successfully. Sending response.");
+    println!("Request processed successfully in {:?}. Sending response.", start_time.elapsed());
 
     Ok(Json(answers_response))
 }

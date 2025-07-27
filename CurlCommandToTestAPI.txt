@@ -1,11 +1,5 @@
 curl -X POST http://localhost:8000/hackrx/run \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -H "Authorization: Bearer my_test_api_key" \
-  -d '{
-        "documents": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
-        "questions": [
-          "What is the grace period for premium payment?",
-          "Does this policy cover maternity expenses?"
-        ]
-      }'
+-H "Content-Type: application/json" \
+-H "Accept: application/json" \
+-H "Authorization: Bearer febc0daceda23ebce03d324301d34ad3768494f0b52a39ffb4adaf083d8f9c5c" \
+-d @payload.json
