@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::pdf::delete_file;
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
-use serde_json::json;
 use crate::ai::gemini::call_gemini_api_with_txts;
 
 #[derive(Deserialize)]
@@ -22,17 +21,9 @@ pub struct AnswersResponse {
 }
 
 pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Result<AnswersResponse, anyhow::Error> {
-    let json_value = call_gemini_api_with_txts(questions).await?;
-
-    let answers_response: AnswersResponse = serde_json::from_value(json_value)
-        .map_err(|e| anyhow::anyhow!("Failed to deserialize answers: {}", e))?;
-
-    Ok(answers_response)
+    let answers = call_gemini_api_with_txts(questions).await?;
+    Ok(AnswersResponse { answers })
 }
-
-
-
-
 
 
 pub async fn hackrx_run(

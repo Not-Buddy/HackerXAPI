@@ -5,41 +5,34 @@ use serde::{Deserialize, Serialize};
 use anyhow::{Result, anyhow};
 use std::io::Write;
 use chrono::Utc;
-use serde_json::json;
 use std::time::Instant;
 use regex::Regex;
+use serde_json;
 
 fn parse_gemini_response_to_answers(text: &str) -> Vec<String> {
-    // Regular expression to match numbered items starting with newline + digits + dot + space, e.g. "\n1. "
-    let re = Regex::new(r"\n\d+\.\s").unwrap();
+    // Regex to match triple backticks with optional 'json' and capture inner content
+    let re = Regex::new(r"(?s)^``````$").unwrap();
 
-    // Find the start of first numbered item to remove any intro text before that
-    let start = re.find(text).map(|m| m.start()).unwrap_or(0);
-    let numbered_part = &text[start..];
+    // If the text matches the fenced JSON block, extract the inside content, else use as is
+    let json_str = if let Some(caps) = re.captures(text) {
+        caps.get(1).map_or(text, |m| m.as_str())
+    } else {
+        text
+    };
 
-    // Split the answers on the numbered pattern and filter out empty parts
-    let parts: Vec<String> = re
-        .split(numbered_part)
-        .filter(|part| !part.trim().is_empty())
-        .map(|s| {
-            let mut cleaned = s.trim().to_string();
-
-            // Remove markdown bold syntax (**), if any
-            cleaned = cleaned.replace("**", "");
-
-            // Remove leading heading before colon, e.g. "Title: actual answer"
-            if let Some(colon_pos) = cleaned.find(':') {
-                cleaned = cleaned[colon_pos + 1..].trim_start().to_string();
-            }
-
-            cleaned
-        })
-        .collect();
-
-    parts
+    // Parse the extracted string as a JSON array of strings
+    match serde_json::from_str::<Vec<String>>(json_str) {
+        Ok(answers) => answers,
+        Err(err) => {
+            eprintln!("Warning: failed to parse JSON array answers: {}", err);
+            // On error, fallback to returning the entire string as a single-element vector
+            vec![text.to_string()]
+        }
+    }
 }
 
-pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_json::Value> {
+
+pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<String>> {
     // Start measuring time
     let start_time = Instant::now();
 
@@ -58,10 +51,14 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_jso
     // Construct the single prompt:
     let questions_joined = questions.join(", ");
     let prompt = format!(
-        "{}\n\nAnswer these questions below 1 by 1 respective to the above text. They are separated by commas:\n{}",
-        policy_content,
-        questions_joined
-    );
+    "{}\n\nPlease answer the following questions one by one. Respond strictly with a JSON array of answer strings only. \
+    Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
+    The questions are separated by commas:\n{}",
+    policy_content.trim(),
+    questions_joined
+);
+
+
 
     // Log the prompt as before
     let logs_dir = Path::new("logs");
@@ -76,7 +73,8 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_jso
     );
     let mut log_file = std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(true)
         .open(&logs_path)?;
     log_file.write_all(log_entry.as_bytes())?;
 
@@ -120,10 +118,9 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_jso
     // Parse answers
     let answers = parse_gemini_response_to_answers(&first_answer);
 
-    let json_response = json!({ "answers": answers });
-    println!("{}", serde_json::to_string_pretty(&json_response).unwrap());
+    println!("{:#?}", answers);
 
-    Ok(json_response)
+    Ok(answers)
 }
 
 
