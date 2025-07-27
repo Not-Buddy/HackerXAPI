@@ -21,11 +21,10 @@ pub struct AnswersResponse {
     pub answers: Vec<String>,
 }
 
-pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Result<AnswersResponse, anyhow::Error> {
-    let answers = call_gemini_api_with_txts(questions).await?;
+pub async fn answer_questions(pdf_text: &str, questions: &[String]) -> Result<AnswersResponse, anyhow::Error> {
+    let answers = call_gemini_api_with_txts(pdf_text, questions).await?;
     Ok(AnswersResponse { answers })
 }
-
 
 pub async fn hackrx_run(
     headers: HeaderMap,

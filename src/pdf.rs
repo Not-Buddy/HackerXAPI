@@ -76,6 +76,16 @@ pub async fn extract_pdf_text(file_path: &str) -> Result<String, Box<StdError>> 
     tokio::task::spawn_blocking(move || extract_pdf_text_sync(&file_path)).await?
 }
 
+// splitting wherever ther is \n\n. Stores the chunks in a vector of strings
+// max_paragraphs is the maximum number of paragraphs to include in each chunk
+pub fn chunk_paras(text: &str, max_paragraphs: usize) -> Vec<String> {
+    let paragraphs: Vec<&str> = text.split("\n\n").collect();
+    paragraphs
+        .chunks(max_paragraphs)
+        .map(|chunk| chunk.join("\n\n"))
+        .collect()
+}
+
 /// Utility function to delete file - you can just import std::fs::remove_file where needed,
 /// but it's fine to add here if you want.
 pub fn delete_file(path: &str) -> std::io::Result<()> {
