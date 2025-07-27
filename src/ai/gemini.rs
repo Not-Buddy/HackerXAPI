@@ -4,13 +4,44 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, anyhow};
 use std::io::Write;
-use chrono::Utc; 
+use chrono::Utc;
+use serde_json::json;
+use std::time::Instant;
+use regex::Regex;
 
-pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_json::Value>
-{
-    use serde_json::json;
-    use std::io::Write;
-    use chrono::Utc; // Add chrono = "0.4" under [dependencies] if you haven't
+fn parse_gemini_response_to_answers(text: &str) -> Vec<String> {
+    // Regular expression to match numbered items starting with newline + digits + dot + space, e.g. "\n1. "
+    let re = Regex::new(r"\n\d+\.\s").unwrap();
+
+    // Find the start of first numbered item to remove any intro text before that
+    let start = re.find(text).map(|m| m.start()).unwrap_or(0);
+    let numbered_part = &text[start..];
+
+    // Split the answers on the numbered pattern and filter out empty parts
+    let parts: Vec<String> = re
+        .split(numbered_part)
+        .filter(|part| !part.trim().is_empty())
+        .map(|s| {
+            let mut cleaned = s.trim().to_string();
+
+            // Remove markdown bold syntax (**), if any
+            cleaned = cleaned.replace("**", "");
+
+            // Remove leading heading before colon, e.g. "Title: actual answer"
+            if let Some(colon_pos) = cleaned.find(':') {
+                cleaned = cleaned[colon_pos + 1..].trim_start().to_string();
+            }
+
+            cleaned
+        })
+        .collect();
+
+    parts
+}
+
+pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_json::Value> {
+    // Start measuring time
+    let start_time = Instant::now();
 
     dotenvy::dotenv().ok();
     let api_key = env::var("GEMINI_KEY").map_err(|_| anyhow!("GEMINI_KEY not found in env"))?;
@@ -23,78 +54,77 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<serde_jso
     let policy_content = fs::read_to_string(policy_path)?;
 
     let client = Client::new();
-    let mut answers = Vec::new();
 
-    for (i, question) in questions.iter().enumerate() {
-        // Build prompt
-        let prompt = format!(
-            "{}\n\nReferring to the context in this .txt file respond to this question:\n{}",
-            policy_content,
-            question
-        );
+    // Construct the single prompt:
+    let questions_joined = questions.join(", ");
+    let prompt = format!(
+        "{}\n\nAnswer these questions below 1 by 1 respective to the above text. They are separated by commas:\n{}",
+        policy_content,
+        questions_joined
+    );
 
-        // ---- LOGGING HERE ----
-        let logs_dir = Path::new("logs");
-        if !logs_dir.exists() {
-            fs::create_dir_all(logs_dir)?;
-        }
-        let logs_path = logs_dir.join("prompt_sent_logs.txt");
-        let log_entry = format!(
-            "-----\nTime: {}\nQuestion #{}:\n{}\n\n",
-            Utc::now().to_rfc3339(),
-            i + 1,
-            prompt
-        );
-        let mut log_file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&logs_path)?;
-        log_file.write_all(log_entry.as_bytes())?;
-        // ---- END LOGGING ----
-
-        let contents = vec![
-            ContentsPart {
-                parts: vec![TextPart { text: prompt }],
-            }
-        ];
-        let body = GeminiRequest { contents };
-
-        let response = client
-            .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent")
-            .header("Content-Type", "application/json")
-            .header("X-goog-api-key", &api_key)
-            .json(&body)
-            .send()
-            .await?;
-
-        let status = response.status();
-        let raw_text = response.text().await?;
-        println!("Raw Gemini response for question {} (status: {}):\n{}", i + 1, status, raw_text);
-
-        if !status.is_success() {
-            answers.push(format!("Error for question: {} - Gemini API request failed: {} - {}", question, status, raw_text));
-            continue;
-        }
-
-        let gemini_response: GeminiResponse = serde_json::from_str(&raw_text)
-            .map_err(|e| anyhow!("Error deserializing Gemini response: {}\nRaw response: {}", e, raw_text))?;
-
-        let first_answer = gemini_response
-            .candidates
-            .get(0)
-            .and_then(|c| c.content.parts.get(0))
-            .map(|part| part.text.clone())
-            .unwrap_or_else(|| "<no response>".to_string());
-
-        answers.push(first_answer);
+    // Log the prompt as before
+    let logs_dir = Path::new("logs");
+    if !logs_dir.exists() {
+        fs::create_dir_all(logs_dir)?;
     }
+    let logs_path = logs_dir.join("prompt_sent_logs.txt");
+    let log_entry = format!(
+        "-----\nTime: {}\nPrompt sent:\n{}\n\n",
+        Utc::now().to_rfc3339(),
+        prompt
+    );
+    let mut log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&logs_path)?;
+    log_file.write_all(log_entry.as_bytes())?;
+
+    let contents = vec![
+        ContentsPart {
+            parts: vec![TextPart { text: prompt }],
+        }
+    ];
+    let body = GeminiRequest { contents };
+
+    let response = client
+        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent")
+        .header("Content-Type", "application/json")
+        .header("X-goog-api-key", &api_key)
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = response.status();
+    let raw_text = response.text().await?;
+    
+    // Stop measuring time
+    let duration = start_time.elapsed();
+    println!("Raw Gemini response (status: {}):\n{}", status, raw_text);
+    println!("Time taken for Gemini API call and response: {:.2?}", duration);
+
+    if !status.is_success() {
+        return Err(anyhow!("Gemini API request failed: {} - {}", status, raw_text));
+    }
+
+    let gemini_response: GeminiResponse = serde_json::from_str(&raw_text)
+        .map_err(|e| anyhow!("Error deserializing Gemini response: {}\nRaw response: {}", e, raw_text))?;
+
+    let first_answer = gemini_response
+        .candidates
+        .get(0)
+        .and_then(|c| c.content.parts.get(0))
+        .map(|part| part.text.clone())
+        .unwrap_or_else(|| "<no response>".to_string());
+
+    // Parse answers
+    let answers = parse_gemini_response_to_answers(&first_answer);
 
     let json_response = json!({ "answers": answers });
     println!("{}", serde_json::to_string_pretty(&json_response).unwrap());
 
     Ok(json_response)
 }
-
 
 
 #[derive(Deserialize)]
