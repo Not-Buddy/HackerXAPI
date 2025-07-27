@@ -1,6 +1,6 @@
 mod server;
 mod pdf;
-mod AI;
+mod ai;
 
 use axum::{
     routing::post,
