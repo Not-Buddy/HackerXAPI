@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("Starting server on http://0.0.0.0:8000 ... Press Ctrl+C to stop.");
 
                 // Spawn server task with a shutdown signal for clean exit
-                let app = Router::new().route("/hackrx/run", post(server::hackrx_run));
+                let app = Router::new().route("/api/v1/hackrx/run", post(server::hackrx_run));
                 let addr: SocketAddr = "0.0.0.0:8000".parse()?;
                 let listener = TcpListener::bind(addr).await?;
 
