@@ -49,18 +49,7 @@ pub async fn hackrx_run(
 
     println!("Authorization token accepted, starting PDF download...");
 
-    let tmp_path = "/tmp/policy.pdf";
-    let permpath = "pdfs/policy.pdf";
-    download_pdf(&body.documents, tmp_path)
-        .await
-        .map_err(|e| {
-            println!("Failed to download PDF: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("PDF download error: {}", e),
-            )
-                .into_response()
-        })?;
+        let permpath = "pdfs/policy.pdf";
 
         download_pdf(&body.documents, permpath)
         .await
@@ -74,9 +63,9 @@ pub async fn hackrx_run(
         })?;
 
 
-    println!("PDF downloaded successfully to {}", tmp_path);
+    println!("PDF downloaded successfully to {}", permpath);
 
-    let pdf_text = extract_pdf_text(tmp_path).await.map_err(|e| {
+    let pdf_text = extract_pdf_text(permpath).await.map_err(|e| {
         println!("Failed to extract PDF text: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,8 +74,6 @@ pub async fn hackrx_run(
             .into_response()
     })?;
 
-    // Clean up temp file
-    delete_file(tmp_path).ok();
 
     println!("Processing questions and preparing answers...");
 
