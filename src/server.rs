@@ -4,7 +4,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use crate::pdf::delete_file;
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
 use crate::ai::gemini::call_gemini_api_with_txts;
