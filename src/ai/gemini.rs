@@ -11,25 +11,35 @@ use serde_json;
 
 fn parse_gemini_response_to_answers(text: &str) -> Vec<String> {
     // Regex to match triple backticks with optional 'json' and capture inner content
-    let re = Regex::new(r"(?s)^``````$").unwrap();
+    let re = Regex::new(r"(?s)```(?:json)?\n(.*?)```").unwrap();
 
-    // If the text matches the fenced JSON block, extract the inside content, else use as is
-    let json_str = if let Some(caps) = re.captures(text) {
-        caps.get(1).map_or(text, |m| m.as_str())
-    } else {
-        text
-    };
+    let extracted = re
+    .captures(text)
+    .and_then(|caps| caps.get(1))
+    .map_or(text, |m| m.as_str());
 
-    // Parse the extracted string as a JSON array of strings
-    match serde_json::from_str::<Vec<String>>(json_str) {
-        Ok(answers) => answers,
-        Err(err) => {
-            eprintln!("Warning: failed to parse JSON array answers: {}", err);
-            // On error, fallback to returning the entire string as a single-element vector
-            vec![text.to_string()]
-        }
+// Try to parse the captured string as a JSON array of strings
+let outer_array: Vec<String> = match serde_json::from_str(extracted) {
+    Ok(arr) => arr,
+    Err(err) => {
+        eprintln!("Warning: failed to parse outer JSON array: {}", err);
+        return vec![text.to_string()];
     }
+};
+
+// Parse each inner string as its own JSON array and extract the final sentence
+outer_array
+    .into_iter()
+    .map(|s| {
+        // Each s should be a string like "[\"Approved\", \"X\", \"Y\"]"
+        match serde_json::from_str::<Vec<String>>(&s) {
+            Ok(inner) => inner.get(2).cloned().unwrap_or_else(|| s),
+            Err(_) => s, // fallback if it's not a valid array
+        }
+    })
+    .collect()
 }
+
 
 
 pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<String>> {
@@ -51,7 +61,10 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<Strin
     // Construct the single prompt:
     let questions_joined = questions.join(", ");
     let prompt = format!(
-    "{}\n\nPlease answer the following questions one by one. Respond strictly with a JSON array of answer strings only. \
+    "{}\n\nPlease answer the following questions one by one with this form
+    [Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.]
+    Write it in 3 sentences that describe these 3 fields decision, amount and justification about the question asked.
+    Respond strictly with a JSON array of answer strings only. 
     Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
     The questions are separated by commas:\n{}",
     policy_content.trim(),
@@ -105,16 +118,50 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<Strin
         return Err(anyhow!("Gemini API request failed: {} - {}", status, raw_text));
     }
 
-    let gemini_response: GeminiResponse = serde_json::from_str(&raw_text)
-        .map_err(|e| anyhow!("Error deserializing Gemini response: {}\nRaw response: {}", e, raw_text))?;
+    use serde_json::Value;
 
-    let first_answer = gemini_response
-        .candidates
-        .get(0)
-        .and_then(|c| c.content.parts.get(0))
-        .map(|part| part.text.clone())
-        .unwrap_or_else(|| "<no response>".to_string());
+let gemini_response: GeminiResponse = serde_json::from_str(&raw_text)
+.map_err(|e| anyhow!("Error deserializing Gemini response: {}\nRaw response: {}", e, raw_text))?;
 
+let first_answer = gemini_response
+.candidates
+.get(0)
+.and_then(|c| c.content.parts.get(0))
+.map(|part| part.text.clone())
+.unwrap_or_else(|| "<no response>".to_string());
+
+// Try to extract the actual JSON content inside triple-backtick json ...
+// This helps avoid parsing the outer markdown wrapper.
+let re = Regex::new(r"(?s)(?:json)?\n(.*?)").unwrap();
+let clean_json_text = re
+.captures(&first_answer)
+.and_then(|caps| caps.get(1))
+.map(|m| m.as_str().trim())
+.unwrap_or(&first_answer);
+
+// Parse it as a Vec<String> — each element is a JSON string, we want to de-escape those.
+let intermediate_array: Vec<String> = match serde_json::from_str(clean_json_text) {
+Ok(val) => val,
+Err(e) => {
+eprintln!("Failed to parse JSON array from response: {}\nRaw: {}", e, clean_json_text);
+vec![first_answer.clone()]
+}
+};
+
+// Now remove the escaped quotes from each string (unescape once more)
+let answers: Vec<String> = intermediate_array
+.into_iter()
+.map(|s| {
+match serde_json::from_str::<Value>(&s) {
+Ok(Value::Array(inner)) => {
+inner.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<_>>().join(" | ")
+}
+_ => s,
+}
+})
+.collect();
+
+println!("{:#?}", answers);
     // Parse answers
     let answers = parse_gemini_response_to_answers(&first_answer);
 
