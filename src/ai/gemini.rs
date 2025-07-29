@@ -49,18 +49,18 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<Strin
     dotenvy::dotenv().ok();
     let api_key = env::var("GEMINI_KEY").map_err(|_| anyhow!("GEMINI_KEY not found in env"))?;
 
-    // Path to the single policy.txt file
-    let policy_path = Path::new("pdfs/policy.txt");
-    if !policy_path.exists() {
-        return Err(anyhow!("File {:?} does not exist", policy_path));
-    }
-    let policy_content = fs::read_to_string(policy_path)?;
+    // Path to the filtered context file
+    let context_path = Path::new("pdfs/contextfiltered.txt");
+    if !context_path.exists() {
+        return Err(anyhow!("File {:?} does not exist", context_path));
+    } 
+let policy_content = fs::read_to_string(context_path)?;
 
-    let client = Client::new();
+let client = Client::new();
 
-    // Construct the single prompt:
-    let questions_joined = questions.join(", ");
-    let prompt = format!(
+// Construct the single prompt:
+let questions_joined = questions.join(", ");
+let prompt = format!(
     "{}\n\nPlease answer the following questions one by one with this form
     [Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.]
     Write it in 3 sentences that describe these 3 fields decision, amount and justification about the question asked.
@@ -70,6 +70,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<Strin
     policy_content.trim(),
     questions_joined
 );
+
 
 
 

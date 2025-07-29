@@ -254,10 +254,10 @@ pub async fn rewrite_policy_with_context(
     new_content.push_str(&"=".repeat(80));
     new_content.push_str("\n\n");
     
-    // Write the new content to policy.txt
-    let policy_path = Path::new("pdfs/policy.txt");
-    fs::write(policy_path, new_content)?;
-    
-    println!("Successfully rewrote pdfs/policy.txt with combined questions context");
+    // Write the new content to contextfilered.txt
+    let context_path = Path::new("pdfs/contextfiltered.txt");
+    fs::write(context_path, new_content)?;
+
+    println!("Successfully wrote relevant context to pdfs/contextfiltered.txt");
     Ok(())
 }
