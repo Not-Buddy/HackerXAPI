@@ -99,29 +99,6 @@ async fn get_single_embedding(text: &str, api_key: &str) -> Result<Vec<f32>> {
     Ok(embed_response.embedding.values)
 }
 
-/// Average multiple embedding vectors
-fn average_embeddings(embeddings: &[Vec<f32>]) -> Vec<f32> {
-    if embeddings.is_empty() {
-        return Vec::new();
-    }
-    
-    let len = embeddings[0].len();
-    let mut result = vec![0.0; len];
-    
-    for embedding in embeddings {
-        for (i, &val) in embedding.iter().enumerate() {
-            result[i] += val;
-        }
-    }
-    
-    // Average by dividing by number of embeddings
-    for val in result.iter_mut() {
-        *val /= embeddings.len() as f32;
-    }
-    
-    result
-}
-
 fn concatenate_embeddings(embeddings: &[Vec<f32>]) -> Vec<f32> {
     let mut result = Vec::new();
     for emb in embeddings {
@@ -202,3 +179,85 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
     Ok(results)
 }
 
+/// Calculate cosine similarity between two vectors
+fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
+    if vec1.len() != vec2.len() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum();
+    let magnitude1: f32 = vec1.iter().map(|v| v * v).sum::<f32>().sqrt();
+    let magnitude2: f32 = vec2.iter().map(|v| v * v).sum::<f32>().sqrt();
+
+    if magnitude1 == 0.0 || magnitude2 == 0.0 {
+        0.0
+    } else {
+        dot_product / (magnitude1 * magnitude2)
+    }
+}
+
+
+pub async fn rewrite_policy_with_context(
+    api_key: &str,
+    questions: &[String],
+    chunk_embeddings: &[(String, Vec<f32>)], // Add this parameter
+) -> Result<()> {
+    // Combine all questions into a single text for embedding - this is already batched
+    let combined_questions = questions.join(" ");
+    println!("Getting combined embedding for all questions at once: {}", combined_questions);
+    
+    // Get a single embedding for all questions combined - this is one API call, not per question
+    let questions_embedding = get_single_embedding(&combined_questions, api_key).await?;
+    println!("Got questions embedding with {} dimensions", questions_embedding.len());
+    
+    // Use the passed chunk embeddings instead of computing them again
+    println!("Using pre-computed chunk embeddings with {} chunks", chunk_embeddings.len());
+    
+    // Now find relevant chunks using the combined questions embedding
+    let mut chunk_similarities = Vec::new();
+    
+    for (chunk_text, chunk_emb) in chunk_embeddings {
+        let similarity = cosine_similarity(&questions_embedding, chunk_emb);
+        chunk_similarities.push((similarity, chunk_text.clone()));
+    }
+    
+    // Sort by similarity (highest first) and take top chunks
+    chunk_similarities.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    let top_chunks: Vec<String> = chunk_similarities
+        .into_iter()
+        .take(5) // Take top 5 most relevant chunks for all questions
+        .filter(|(similarity, _)| *similarity > 0.4) // Lower threshold since we're combining questions
+        .map(|(_, text)| text)
+        .collect();
+    
+    // Create new content with relevant contexts and questions
+    let mut new_content = String::new();
+    new_content.push_str("=== POLICY DOCUMENT WITH RELEVANT CONTEXT AND QUESTIONS ===\n\n");
+    
+    // Add all questions first
+    new_content.push_str("QUESTIONS:\n");
+    for (i, question) in questions.iter().enumerate() {
+        new_content.push_str(&format!("{}. {}\n", i + 1, question));
+    }
+    new_content.push_str("\n");
+    
+    // Add relevant context
+    if !top_chunks.is_empty() {
+        new_content.push_str("RELEVANT CONTEXT:\n");
+        let context = top_chunks.join("\n\n---\n\n");
+        new_content.push_str(&context);
+        new_content.push_str("\n\n");
+    } else {
+        new_content.push_str("No highly relevant context found for these questions.\n\n");
+    }
+    
+    new_content.push_str(&"=".repeat(80));
+    new_content.push_str("\n\n");
+    
+    // Write the new content to policy.txt
+    let policy_path = Path::new("pdfs/policy.txt");
+    fs::write(policy_path, new_content)?;
+    
+    println!("Successfully rewrote pdfs/policy.txt with combined questions context");
+    Ok(())
+}
