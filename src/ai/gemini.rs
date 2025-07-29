@@ -10,13 +10,13 @@ use regex::Regex;
 use serde_json;
 // I've added these:
 use serde_json::json;
-use crate::pdf::StdError;
+//use crate::pdf::StdError;
 use crate::ai::embed::embed_pdf_chunks;
 use crate::ai::embed::find_relevant_chunks;
 
 fn parse_gemini_response_to_answers(text: &str) -> Vec<String> {
     // Regex to match triple backticks with optional 'json' and capture inner content
-    let re = Regex::new(r"(?s)^``````$").unwrap();
+    let re = Regex::new(r"(?s)```(?:json)?\n(.*?)```").unwrap();
 
     // If the text matches the fenced JSON block, extract the inside content, else use as is
     let json_str = if let Some(caps) = re.captures(text) {
@@ -58,7 +58,7 @@ pub async fn call_gemini_api_with_txts(
     for question in questions {
         // 2. Find relevant chunks for this question
         let relevant_chunks = find_relevant_chunks(question, &chunk_embeddings, &api_key, top_n).await?;
-        let context = relevant_chunks.iter().map(|c| &c.chunk).collect::<Vec<_>>().join("\n\n");
+        let context = relevant_chunks.iter().map(|c| c.chunk.as_str()).collect::<Vec<&str>>().join("\n\n");
         let prompt = format!(
             "{}\n\nQuestion: {}\n\nPlease answer strictly as a JSON string.",
             context, question
@@ -127,7 +127,7 @@ pub async fn call_gemini_api_with_txts(
     Ok(answers)
 }
 
-pub async fn embed_text_google(chunk: &str, api_key: &str) -> Result<Vec<f32>, Box<StdError>> {
+pub async fn embed_text_google(chunk: &str, api_key: &str) -> Result<Vec<f32>, anyhow::Error> {
     let client = Client::new();
     let url = "https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedText";
     let body = json!({ "content": chunk });
@@ -144,7 +144,7 @@ pub async fn embed_text_google(chunk: &str, api_key: &str) -> Result<Vec<f32>, B
     // Adjust this path based on actual API response structure
     let embedding = resp["embedding"]["values"]
         .as_array()
-        .ok_or("No embedding in response")?
+        .ok_or(anyhow!("No embedding in response"))? // ← fixed
         .iter()
         .map(|v| v.as_f64().unwrap_or(0.0) as f32)
         .collect();
