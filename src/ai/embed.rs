@@ -122,6 +122,15 @@ fn average_embeddings(embeddings: &[Vec<f32>]) -> Vec<f32> {
     result
 }
 
+fn concatenate_embeddings(embeddings: &[Vec<f32>]) -> Vec<f32> {
+    let mut result = Vec::new();
+    for emb in embeddings {
+        result.extend_from_slice(emb);
+    }
+    result
+}
+
+
 /// Reads policy.txt file, chunks it, gets embeddings for each chunk, and returns averaged embedding
 pub async fn get_policy_embedding(api_key: &str) -> Result<Vec<f32>> {
     let policy_path = Path::new("pdfs/policy.txt");
@@ -151,13 +160,15 @@ pub async fn get_policy_embedding(api_key: &str) -> Result<Vec<f32>> {
     }
     
     // Average all embeddings to get a single representative embedding
-    let averaged_embedding = average_embeddings(&embeddings);
-    
-    println!("Created averaged embedding with {} dimensions", averaged_embedding.len());
-    Ok(averaged_embedding)
+    // Instead of average_embeddings(&embeddings)
+    let concatenated_embedding = concatenate_embeddings(&embeddings);
+    println!("Created concatenated embedding with {} dimensions", concatenated_embedding.len());
+    Ok(concatenated_embedding)
 }
 
 /// Alternative: Return all chunk embeddings instead of averaging
+use futures::stream::{self, StreamExt};
+
 pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, Vec<f32>)>> {
     let policy_path = Path::new("pdfs/policy.txt");
     if !policy_path.exists() {
@@ -167,17 +178,27 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
     let policy_content = fs::read_to_string(policy_path)?;
     let chunks = chunk_text(&policy_content, 25000);
     
-    let mut chunk_embeddings = Vec::new();
+    println!("Processing {} chunks with controlled parallelism", chunks.len());
     
-    for (i, chunk) in chunks.iter().enumerate() {
-        println!("Processing chunk {} of {}", i + 1, chunks.len());
-        
-        let embedding = get_single_embedding(chunk, api_key).await?;
-        chunk_embeddings.push((chunk.clone(), embedding));
-        
-        if i < chunks.len() - 1 {
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        }
-    }    
-    Ok(chunk_embeddings)
+    // Process chunks in parallel with limited concurrency
+    let chunk_embeddings: Vec<_> = stream::iter(chunks.into_iter().enumerate())
+        .map(|(i, chunk)| async move {
+            println!("Processing chunk {} of total", i + 1);
+            
+            let embedding = get_single_embedding(&chunk, api_key).await?;
+            Ok::<(String, Vec<f32>), anyhow::Error>((chunk, embedding))
+        })
+        .buffer_unordered(2) // Process max 2 chunks concurrently
+        .collect::<Vec<_>>()
+        .await;
+    
+    // Handle any errors
+    let mut results = Vec::new();
+    for result in chunk_embeddings {
+        results.push(result?);
+    }
+    
+    println!("Successfully processed {} chunks", results.len());
+    Ok(results)
 }
+
