@@ -112,7 +112,7 @@ pub async fn hackrx_run(
     println!("Policy file rewritten with question contexts");
 
     // Now call your answer function with the rewritten content
-    let updated_pdf_text = fs::read_to_string("pdfs/policy.txt").map_err(|e| {
+    let updated_pdf_text = fs::read_to_string("pdfs/contextfiltered.txt").map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read updated policy: {}", e),
