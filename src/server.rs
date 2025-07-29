@@ -6,8 +6,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
-use crate::ai::gemini::call_gemini_api_with_txts;
-use std::time::Instant;
+use crate::ai::gemini::{call_gemini_api_with_txts};
+use crate::ai::embed::{get_policy_embedding};
+use std::{env, time::Instant}; // Add env import
+use anyhow::anyhow;
 
 #[derive(Deserialize)]
 pub struct QuestionRequest {
@@ -25,10 +27,10 @@ pub async fn answer_questions(_pdf_text: &str, questions: &[String]) -> Result<A
     Ok(AnswersResponse { answers })
 }
 
-
 pub async fn hackrx_run(
     headers: HeaderMap,
-    Json(body): Json<QuestionRequest>,) -> Result<Json<AnswersResponse>, Response> {
+    Json(body): Json<QuestionRequest>,
+) -> Result<Json<AnswersResponse>, Response> {
     let start_time = Instant::now();
     println!("Received request with documents URL: {}", body.documents);
 
@@ -48,9 +50,9 @@ pub async fn hackrx_run(
 
     println!("Authorization token accepted, starting PDF download...");
 
-        let permpath = "pdfs/policy.pdf";
+    let permpath = "pdfs/policy.pdf";
 
-        download_pdf(&body.documents, permpath)
+    download_pdf(&body.documents, permpath)
         .await
         .map_err(|e| {
             println!("Failed to download PDF: {}", e);
@@ -61,9 +63,9 @@ pub async fn hackrx_run(
                 .into_response()
         })?;
 
-
     println!("PDF downloaded successfully to {}", permpath);
 
+    // Extract PDF text - this creates pdfs/policy.txt
     let pdf_text = extract_pdf_text(permpath).await.map_err(|e| {
         println!("Failed to extract PDF text: {}", e);
         (
@@ -73,6 +75,29 @@ pub async fn hackrx_run(
             .into_response()
     })?;
 
+    // Get API key and embedding AFTER text extraction
+    dotenvy::dotenv().ok();
+    let api_key = env::var("GEMINI_KEY").map_err(|_| {
+        println!("GEMINI_KEY not found in environment variables");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "GEMINI_KEY environment variable not found",
+        )
+            .into_response()
+    })?;
+
+    let embedding_vector = get_policy_embedding(&api_key).await.map_err(|e| {
+        println!("Failed to get policy embedding: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Embedding error: {}", e),
+        )
+            .into_response()
+    })?;
+
+    println!("Got embedding with {} dimensions", embedding_vector.len());
+
+    println!("Embeddings here : {:?}",embedding_vector);
 
     println!("Processing questions and preparing answers...");
 
@@ -86,7 +111,6 @@ pub async fn hackrx_run(
                 .into_response()
         })?;
 
-    println!("Request processed successfully. Sending response.");
     println!("Request processed successfully in {:?}. Sending response.", start_time.elapsed());
 
     Ok(Json(answers_response))
