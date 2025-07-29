@@ -129,8 +129,15 @@ pub async fn call_gemini_api_with_txts(
 
 pub async fn embed_text_google(chunk: &str, api_key: &str) -> Result<Vec<f32>, anyhow::Error> {
     let client = Client::new();
-    let url = "https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedText";
-    let body = json!({ "content": chunk });
+    let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent";
+    let body = serde_json::json!({
+        "model": "models/gemini-embedding-001",
+        "content": {
+            "parts": [
+                { "text": chunk }
+            ]
+        }
+    });
 
     let resp = client
         .post(url)
@@ -140,11 +147,13 @@ pub async fn embed_text_google(chunk: &str, api_key: &str) -> Result<Vec<f32>, a
         .await?
         .json::<serde_json::Value>()
         .await?;
+    
+    println!("{:?}", resp); 
 
-    // Adjust this path based on actual API response structure
+
     let embedding = resp["embedding"]["values"]
         .as_array()
-        .ok_or(anyhow!("No embedding in response"))? // ← fixed
+        .ok_or(anyhow!("No embedding in response"))? 
         .iter()
         .map(|v| v.as_f64().unwrap_or(0.0) as f32)
         .collect();

@@ -78,13 +78,38 @@ pub async fn extract_pdf_text(file_path: &str) -> Result<String, Box<StdError>> 
 
 // splitting wherever ther is \n\n. Stores the chunks in a vector of strings
 // max_paragraphs is the maximum number of paragraphs to include in each chunk
-pub fn chunk_paras(text: &str, max_paragraphs: usize) -> Vec<String> {
+pub fn chunk_paras(text: &str, max_bytes: usize) -> Vec<String> {
     let paragraphs: Vec<&str> = text.split("\n\n").collect();
-    paragraphs
-        .chunks(max_paragraphs)
-        .map(|chunk| chunk.join("\n\n"))
-        .collect()
+    let mut result = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_size = 0;
+
+    for para in paragraphs {
+        let para_size = para.len();
+
+        // If adding this paragraph would exceed the max byte size, start a new chunk
+        if current_size + para_size + 2 > max_bytes { // +2 for the "\n\n" separator
+            result.push(current_chunk);
+            current_chunk = String::new();
+            current_size = 0;
+        }
+
+        // Add paragraph to current chunk
+        if !current_chunk.is_empty() {
+            current_chunk.push_str("\n\n"); // Add paragraph separator if not the first paragraph
+        }
+        current_chunk.push_str(para);
+        current_size += para_size + 2; // Adding the separator size
+    }
+
+    // Push the last chunk if it has content
+    if !current_chunk.is_empty() {
+        result.push(current_chunk);
+    }
+
+    result
 }
+
 
 /// Utility function to delete file - you can just import std::fs::remove_file where needed,
 /// but it's fine to add here if you want.
