@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::pdf::extract_pdf_text;
 use crate::pdf::download_pdf;
 use crate::ai::gemini::{call_gemini_api_with_txts};
-use crate::ai::embed::{get_policy_embedding};
-use std::{env, time::Instant}; // Add env import
-use anyhow::anyhow;
+use crate::ai::embed::{get_policy_chunk_embeddings, rewrite_policy_with_context}; // Fixed import
+use std::{env, time::Instant, fs};
 
 #[derive(Deserialize)]
 pub struct QuestionRequest {
@@ -66,7 +65,7 @@ pub async fn hackrx_run(
     println!("PDF downloaded successfully to {}", permpath);
 
     // Extract PDF text - this creates pdfs/policy.txt
-    let pdf_text = extract_pdf_text(permpath).await.map_err(|e| {
+    let _pdf_text = extract_pdf_text(permpath).await.map_err(|e| {
         println!("Failed to extract PDF text: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -86,8 +85,8 @@ pub async fn hackrx_run(
             .into_response()
     })?;
 
-    let embedding_vector = get_policy_embedding(&api_key).await.map_err(|e| {
-        println!("Failed to get policy embedding: {}", e);
+    let chunk_embeddings = get_policy_chunk_embeddings(&api_key).await.map_err(|e| {
+        println!("Failed to get policy chunk embeddings: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Embedding error: {}", e),
@@ -95,16 +94,33 @@ pub async fn hackrx_run(
             .into_response()
     })?;
 
-    println!("Got embedding with {} dimensions", embedding_vector.len());
-
-    println!("Embeddings here : {:?}",embedding_vector);
-
+    println!("Got chunk embeddings for {} chunks", chunk_embeddings.len());
     println!("Processing questions and preparing answers...");
 
+    // Rewrite policy.txt with relevant context for questions
+    rewrite_policy_with_context(&api_key, &body.questions, &chunk_embeddings)
+        .await
+        .map_err(|e| {
+            println!("Failed to rewrite policy with context: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Context rewriting error: {}", e),
+            )
+                .into_response()
+        })?;
 
+    println!("Policy file rewritten with question contexts");
 
-    
-    let answers_response = answer_questions(&pdf_text, &body.questions)
+    // Now call your answer function with the rewritten content
+    let updated_pdf_text = fs::read_to_string("pdfs/policy.txt").map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read updated policy: {}", e),
+        )
+            .into_response()
+    })?;
+
+    let answers_response = answer_questions(&updated_pdf_text, &body.questions)
         .await
         .map_err(|e| {
             (
