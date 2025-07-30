@@ -62,8 +62,9 @@ let client = Client::new();
 let questions_joined = questions.join(", ");
 let prompt = format!(
     "{}\n\nPlease answer the following questions one by one with this form
-    Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
-    Respond strictly with a JSON array of answer strings only. 
+    'Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on'
+    Respond strictly with a JSON array of answer strings only,
+    Ensure answers are atleast 7 words,
     Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
     The questions are separated by commas:\n{}",
     policy_content.trim(),

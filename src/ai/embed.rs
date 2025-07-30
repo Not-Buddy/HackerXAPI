@@ -165,7 +165,7 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
             let embedding = get_single_embedding(&chunk, api_key).await?;
             Ok::<(String, Vec<f32>), anyhow::Error>((chunk, embedding))
         })
-        .buffer_unordered(2) // Process max 2 chunks concurrently
+        .buffer_unordered(5)
         .collect::<Vec<_>>()
         .await;
     
