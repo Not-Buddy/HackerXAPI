@@ -225,34 +225,22 @@ pub async fn rewrite_policy_with_context(
     chunk_similarities.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
     let top_chunks: Vec<String> = chunk_similarities
         .into_iter()
-        .take(5) // Take top 5 most relevant chunks for all questions
-        .filter(|(similarity, _)| *similarity > 0.4) // Lower threshold since we're combining questions
+        .take(2)
+        .filter(|(similarity, _)| *similarity > 0.6) // Lower threshold since we're combining questions
         .map(|(_, text)| text)
         .collect();
     
-    // Create new content with relevant contexts and questions
     let mut new_content = String::new();
-    new_content.push_str("=== POLICY DOCUMENT WITH RELEVANT CONTEXT AND QUESTIONS ===\n\n");
-    
-    // Add all questions first
-    new_content.push_str("QUESTIONS:\n");
-    for (i, question) in questions.iter().enumerate() {
-        new_content.push_str(&format!("{}. {}\n", i + 1, question));
-    }
-    new_content.push_str("\n");
+
     
     // Add relevant context
     if !top_chunks.is_empty() {
-        new_content.push_str("RELEVANT CONTEXT:\n");
         let context = top_chunks.join("\n\n---\n\n");
         new_content.push_str(&context);
         new_content.push_str("\n\n");
     } else {
         new_content.push_str("No highly relevant context found for these questions.\n\n");
     }
-    
-    new_content.push_str(&"=".repeat(80));
-    new_content.push_str("\n\n");
     
     // Write the new content to contextfilered.txt
     let context_path = Path::new("pdfs/contextfiltered.txt");
