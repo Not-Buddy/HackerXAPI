@@ -62,8 +62,6 @@ let client = Client::new();
 let questions_joined = questions.join(", ");
 let prompt = format!(
     "{}\n\nPlease answer the following questions one by one with this form
-    [Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.]
-    Write it in 3 sentences that describe these 3 fields decision, amount and justification about the question asked.
     Respond strictly with a JSON array of answer strings only. 
     Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
     The questions are separated by commas:\n{}",
