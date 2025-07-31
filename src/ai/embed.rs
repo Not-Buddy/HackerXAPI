@@ -153,7 +153,7 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
     }
     
     let policy_content = fs::read_to_string(policy_path)?;
-    let chunks = chunk_text(&policy_content, 25000);
+    let chunks = chunk_text(&policy_content, 15000);
     
     println!("Processing {} chunks with controlled parallelism", chunks.len());
     
