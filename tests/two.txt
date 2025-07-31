@@ -1,7 +1,0 @@
-What happens in the lost address problem?
-What is a type of concurrency-control scheme that has gained wide acceptance in commercial and open-source systems?
-What is a difficulty in reducing overhead in a validation-based protocol?
-What are the two different deadlock prevention schemes?
-What are the types of serializability?
-Does my car contain ACID properties?
-How much would it cost me to implement raid 5?

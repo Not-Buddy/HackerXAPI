@@ -1,4 +1,0 @@
-Does curl allow us to download the entire contents of the web?
-How many steps will it take to configure a router through a console?
-What should I configure to enable packet transmission among devices?
-What configuration does Dynamic NAT require?

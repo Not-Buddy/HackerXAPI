@@ -1,0 +1,10 @@
+What is the main challenge in identifying and experimentally testing new CAR constructs that the Projected Quantum Kernel (PQK) method aims to address? 
+How does the PQK method operate to predict CAR T-cell cytotoxicity, and what kind of hardware was used for its largest application to date? 
+What are chimeric antigen receptor (CAR) T-cells, and how do their co-stimulatory domains influence their function? 
+What is the significance of the "combinatorial motif space" in CAR T-cell design, and why is it challenging to explore experimentally? 
+How do the g cq ​and model complexity (Sc and Sq) metrics help assess the potential for quantum prediction advantage in a machine learning task? 
+How did the performance of PQK (E1) data compare to the original data in classifying CAR T-cells for high and low cytotoxicity, particularly with increasing feature map repetitions? 
+Why does the predictive performance of PQK decrease when the number of feature map repetitions increases beyond a certain point? 
+In what specific scenarios or for which motif positions did the PQK-based classifier demonstrate significantly improved predictive performance compared to using the original data? 
+What are the key limitations of classical machine learning methods when applied to problems like CAR T-cell intracellular signaling domain optimization? 
+What are the challenges in applying PQK to a regression task on near-term quantum hardware, and why are classification tasks currently more suitable? 
