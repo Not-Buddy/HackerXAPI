@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, anyhow};
 
-const CHUNK_SIZE: usize = 20000;
+const CHUNK_SIZE: usize = 30000;
 const PARALLEL_REQS: usize = 100;
 const RELEVANT_CHUNKS: usize = 10;
 
@@ -194,58 +194,3 @@ pub async fn rewrite_policy_with_context(
     println!("Successfully wrote relevant context to pdfs/contextfiltered.txt");
     Ok(())
 }
-
-fn detect_and_decode_caesar(text: &str) -> String {
-    // Try different shift amounts and pick the one that produces the most English-like text
-    for shift in 1..26 {
-        let decoded = decode_caesar_cipher(text, shift);
-        // Check if this looks like English (contains common words)
-        if decoded.contains("THE") || decoded.contains("AND") || decoded.contains("TO") || decoded.contains("OF") {
-            println!("Detected Caesar cipher with shift: {}", shift);
-            return decoded;
-        }
-    }
-    // If no shift produces recognizable English, return original
-    text.to_string()
-}
-
-fn clean_text(text: &str) -> String {
-    // Auto-detect and decode Caesar cipher
-    let decoded = detect_and_decode_caesar(text);
-    
-    // Then apply your existing cleaning
-    decoded.chars()
-        .filter(|c| {
-            match *c {
-                ' ' | '\n' | '\t' | '\r' => true,
-                c if c.is_ascii_graphic() => true,
-                c if c.is_ascii_alphanumeric() => true,
-                _ => false,
-            }
-        })
-        .collect::<String>()
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn decode_caesar_cipher(text: &str, shift: u8) -> String {
-    text.chars()
-        .map(|c| {
-            match c {
-                'A'..='Z' => {
-                    let shifted = ((c as u8 - b'A' + 26 - shift) % 26) + b'A';
-                    shifted as char
-                }
-                'a'..='z' => {
-                    let shifted = ((c as u8 - b'a' + 26 - shift) % 26) + b'a';
-                    shifted as char
-                }
-                _ => c, // Keep non-alphabetic characters unchanged
-            }
-        })
-        .collect()
-}
-
