@@ -26,127 +26,97 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
     use lopdf::{Document, Object, content::Content};
     use std::fs;
     use std::path::Path;
-    use std::collections::HashSet;
 
     let doc = Document::load(file_path)?;
-
+    
     // Ensure output dir
     let pdfs_dir = Path::new("pdfs");
     if !pdfs_dir.exists() {
         fs::create_dir_all(pdfs_dir)?;
     }
 
-    // Holds candidate headers and footers (strings)
-    let mut candidate_headers = HashSet::new();
-    let mut candidate_footers = HashSet::new();
-
-    // Collect headers/footers from first few pages (say first 3 pages)
-    let pages = doc.get_pages();
-    for (_page_i, page_id) in pages.iter().take(3) {
-        let content = doc.get_page_content(*page_id)?;
-        let content = Content::decode(&content)?;
-        let page_text = content.operations.iter()
-            .filter_map(|op| {
-    if op.operator == "Tj" || op.operator == "'" || op.operator == "\"" {
-        op.operands.get(0).and_then(|operand| match operand {
-            Object::String(bytes, _) => Some(clean_text(&String::from_utf8_lossy(bytes))),
-            _ => None
-        })
-    } else if op.operator == "TJ" {
-        op.operands.get(0).and_then(|operand| match operand {
-            Object::Array(array) => {
-                Some(array.iter().filter_map(|item| match item {
-                    Object::String(bytes, _) => Some(clean_text(&String::from_utf8_lossy(bytes))),
-                    _ => None
-                }).collect::<Vec<String>>().join(""))
-            }
-            _ => None
-        })
-    } else {
-        None
-    }
-})
-
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let lines: Vec<_> = page_text.lines().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-
-        // Add first 3 lines as headers if exist
-        for header_line in lines.iter().take(3) {
-            candidate_headers.insert((*header_line).to_string());
-        }
-        // Add last 3 lines as footers if exist
-        for footer_line in lines.iter().rev().take(3) {
-            candidate_footers.insert((*footer_line).to_string());
-        }
-    }
-
     let mut all_text = String::new();
-    let mut previous_line_empty = false;
+    let pages = doc.get_pages();
 
-    for (_page_number, page_id) in pages {
+    for (page_number, page_id) in pages {
+        // Add page separator for readability
+        if page_number > 1 {
+            all_text.push_str("\n\n--- Page ");
+            all_text.push_str(&page_number.to_string());
+            all_text.push_str(" ---\n\n");
+        }
+
         let content = doc.get_page_content(page_id)?;
         let content = Content::decode(&content)?;
+        
+        // Extract all text operations from the page
         let page_text = content.operations.iter()
             .filter_map(|op| {
-                if op.operator == "Tj" || op.operator == "'" || op.operator == "\"" {
-                    op.operands.get(0).and_then(|operand| match operand {
-                        Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
-                        _ => None
-                    })
-                } else if op.operator == "TJ" {
-                    op.operands.get(0).and_then(|operand| match operand {
-                        Object::Array(array) => {
-                            Some(array.iter().filter_map(|item| match item {
-                                Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
-                                _ => None
-                            }).collect::<Vec<String>>().join(""))
-                        }
-                        _ => None
-                    })
-                } else {
-                    None
+                match op.operator.as_str() {
+                    // Handle single text string operations
+                    "Tj" | "'" | "\"" => {
+                        op.operands.get(0).and_then(|operand| match operand {
+                            Object::String(bytes, _) => {
+                                String::from_utf8(bytes.clone()).ok()
+                                    .map(|s| clean_text(&s))
+                                    .filter(|s| !s.trim().is_empty())
+                            },
+                            _ => None
+                        })
+                    },
+                    // Handle text array operations (for text with spacing adjustments)
+                    "TJ" => {
+                        op.operands.get(0).and_then(|operand| match operand {
+                            Object::Array(array) => {
+                                let text_parts: Vec<String> = array.iter()
+                                    .filter_map(|item| match item {
+                                        Object::String(bytes, _) => {
+                                            String::from_utf8(bytes.clone()).ok()
+                                                .map(|s| clean_text(&s))
+                                                .filter(|s| !s.trim().is_empty())
+                                        },
+                                        _ => None
+                                    })
+                                    .collect();
+                                
+                                if text_parts.is_empty() {
+                                    None
+                                } else {
+                                    Some(text_parts.join(""))
+                                }
+                            },
+                            _ => None
+                        })
+                    },
+                    _ => None
                 }
             })
-            .collect::<Vec<String>>()
-            .join("\n");
+            .collect::<Vec<String>>();
 
-        // Split into trimmed lines and filter out header/footer
-        for line in page_text.lines() {
-            let line_trim = line.trim();
-            if line_trim.is_empty() {
-                // Avoid multiple consecutive blank lines
-                if !previous_line_empty {
-                    all_text.push('\n');
-                    previous_line_empty = true;
-                }
-                continue;
-            }
-
-            if candidate_headers.contains(line_trim) || candidate_footers.contains(line_trim) {
-                // Skip header/footer line
-                continue;
-            }
-
-            all_text.push_str(line_trim);
+        // Join all text from this page and add to overall text
+        let page_content = page_text.join(" ");
+        if !page_content.trim().is_empty() {
+            // Add the page content with proper line breaks
+            all_text.push_str(&page_content);
             all_text.push('\n');
-            previous_line_empty = false;
         }
-
-        // Add a page break marker optionally (or just a blank line)
-        all_text.push('\n'); 
-        previous_line_empty = true;
     }
+
+    // Clean up excessive whitespace while preserving paragraph breaks
+    let cleaned_text = all_text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>()
+        .join("\n");
 
     // Write result file
     let txt_path = pdfs_dir.join("policy.txt");
-    fs::write(&txt_path, &all_text)?;
-    println!("Saved main extracted text (excluding headers/footers) to {:?}", txt_path);
+    fs::write(&txt_path, &cleaned_text)?;
+    println!("Saved extracted text to {:?}", txt_path);
 
-    Ok(all_text)
+    Ok(cleaned_text)
 }
-
 
 pub async fn extract_pdf_text(file_path: &str) -> Result<String, Box<StdError>> {
     let file_path = file_path.to_owned();
