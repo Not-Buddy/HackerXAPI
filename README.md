@@ -11,3 +11,7 @@ Then run
 cargo run
 ``
 Temp README will make it more brief later
+
+
+System dependcies on java
+sudo apt-get install pdftk-java qpdf poppler-utils
