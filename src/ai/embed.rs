@@ -4,6 +4,10 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, anyhow};
 
+const CHUNK_SIZE: usize = 20000;
+const PARALLEL_REQS: usize = 100;
+const RELEVANT_CHUNKS: usize = 10;
+
 #[derive(Serialize)]
 struct EmbedRequest {
     model: String,
@@ -30,43 +34,17 @@ struct EmbeddingData {
     values: Vec<f32>,
 }
 
-/// Chunk text into smaller pieces (by characters, not tokens - adjust as needed)
+/// Chunk text into pieces of exactly max_chars size (may cut words)
 fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
-    let mut chunks = Vec::new();
-    let mut current_chunk = String::new();
-    
-    for paragraph in text.split("\n\n") {
-        // If adding this paragraph would exceed limit, save current chunk
-        if !current_chunk.is_empty() && current_chunk.len() + paragraph.len() > max_chars {
-            chunks.push(current_chunk.trim().to_string());
-            current_chunk = String::new();
-        }
-        
-        // If single paragraph is too large, split by sentences
-        if paragraph.len() > max_chars {
-            for sentence in paragraph.split(". ") {
-                if !current_chunk.is_empty() && current_chunk.len() + sentence.len() > max_chars {
-                    chunks.push(current_chunk.trim().to_string());
-                    current_chunk = String::new();
-                }
-                current_chunk.push_str(sentence);
-                current_chunk.push_str(". ");
-            }
-        } else {
-            current_chunk.push_str(paragraph);
-            current_chunk.push_str("\n\n");
-        }
-    }
-    
-    // Add remaining chunk
-    if !current_chunk.trim().is_empty() {
-        chunks.push(current_chunk.trim().to_string());
-    }
-    
-    chunks
+    text.chars()
+        .collect::<Vec<char>>()
+        .chunks(max_chars)
+        .map(|chunk| chunk.iter().collect::<String>())
+        .filter(|chunk| !chunk.trim().is_empty())
+        .collect()
 }
 
-/// Get embedding for a single text chunk
+
 async fn get_single_embedding(text: &str, api_key: &str) -> Result<Vec<f32>> {
     let request_body = EmbedRequest {
         model: "models/gemini-embedding-001".to_string(),
@@ -76,6 +54,16 @@ async fn get_single_embedding(text: &str, api_key: &str) -> Result<Vec<f32>> {
             }],
         },
     };
+
+    // Check payload size before sending
+    let payload_json = serde_json::to_string(&request_body)?;
+    let payload_size = payload_json.len();
+    
+    if payload_size > 35000 { // Leave some buffer
+        return Err(anyhow!("Payload too large: {} bytes (limit ~36000)", payload_size));
+    }
+    
+    println!("Sending payload of {} bytes", payload_size);
 
     let client = Client::new();
     let response = client
@@ -99,49 +87,6 @@ async fn get_single_embedding(text: &str, api_key: &str) -> Result<Vec<f32>> {
     Ok(embed_response.embedding.values)
 }
 
-fn concatenate_embeddings(embeddings: &[Vec<f32>]) -> Vec<f32> {
-    let mut result = Vec::new();
-    for emb in embeddings {
-        result.extend_from_slice(emb);
-    }
-    result
-}
-
-
-/// Reads policy.txt file, chunks it, gets embeddings for each chunk, and returns averaged embedding
-pub async fn get_policy_embedding(api_key: &str) -> Result<Vec<f32>> {
-    let policy_path = Path::new("pdfs/policy.txt");
-    if !policy_path.exists() {
-        return Err(anyhow!("File {:?} does not exist", policy_path));
-    }
-    
-    let policy_content = fs::read_to_string(policy_path)?;
-    
-    // Chunk the text (30KB limit, use ~25KB to be safe)
-    let chunks = chunk_text(&policy_content, 25000);
-    println!("Split policy into {} chunks", chunks.len());
-    
-    let mut embeddings = Vec::new();
-    
-    // Get embedding for each chunk with delay to avoid rate limits
-    for (i, chunk) in chunks.iter().enumerate() {
-        println!("Processing chunk {} of {}", i + 1, chunks.len());
-        
-        let embedding = get_single_embedding(chunk, api_key).await?;
-        embeddings.push(embedding);
-        
-        // Add delay between requests to avoid rate limiting
-        if i < chunks.len() - 1 {
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        }
-    }
-    
-    // Average all embeddings to get a single representative embedding
-    // Instead of average_embeddings(&embeddings)
-    let concatenated_embedding = concatenate_embeddings(&embeddings);
-    println!("Created concatenated embedding with {} dimensions", concatenated_embedding.len());
-    Ok(concatenated_embedding)
-}
 
 /// Alternative: Return all chunk embeddings instead of averaging
 use futures::stream::{self, StreamExt};
@@ -153,7 +98,7 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
     }
     
     let policy_content = fs::read_to_string(policy_path)?;
-    let chunks = chunk_text(&policy_content, 15000);
+    let chunks = chunk_text(&policy_content, CHUNK_SIZE);
     
     println!("Processing {} chunks with controlled parallelism", chunks.len());
     
@@ -165,7 +110,7 @@ pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, V
             let embedding = get_single_embedding(&chunk, api_key).await?;
             Ok::<(String, Vec<f32>), anyhow::Error>((chunk, embedding))
         })
-        .buffer_unordered(5)
+        .buffer_unordered(PARALLEL_REQS)
         .collect::<Vec<_>>()
         .await;
     
@@ -225,8 +170,8 @@ pub async fn rewrite_policy_with_context(
     chunk_similarities.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
     let top_chunks: Vec<String> = chunk_similarities
         .into_iter()
-        .take(2)
-        .filter(|(similarity, _)| *similarity > 0.6) // Lower threshold since we're combining questions
+        .take(RELEVANT_CHUNKS)
+        .filter(|(similarity, _)| *similarity > 0.4) // Lower threshold since we're combining questions
         .map(|(_, text)| text)
         .collect();
     
@@ -249,3 +194,58 @@ pub async fn rewrite_policy_with_context(
     println!("Successfully wrote relevant context to pdfs/contextfiltered.txt");
     Ok(())
 }
+
+fn detect_and_decode_caesar(text: &str) -> String {
+    // Try different shift amounts and pick the one that produces the most English-like text
+    for shift in 1..26 {
+        let decoded = decode_caesar_cipher(text, shift);
+        // Check if this looks like English (contains common words)
+        if decoded.contains("THE") || decoded.contains("AND") || decoded.contains("TO") || decoded.contains("OF") {
+            println!("Detected Caesar cipher with shift: {}", shift);
+            return decoded;
+        }
+    }
+    // If no shift produces recognizable English, return original
+    text.to_string()
+}
+
+fn clean_text(text: &str) -> String {
+    // Auto-detect and decode Caesar cipher
+    let decoded = detect_and_decode_caesar(text);
+    
+    // Then apply your existing cleaning
+    decoded.chars()
+        .filter(|c| {
+            match *c {
+                ' ' | '\n' | '\t' | '\r' => true,
+                c if c.is_ascii_graphic() => true,
+                c if c.is_ascii_alphanumeric() => true,
+                _ => false,
+            }
+        })
+        .collect::<String>()
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn decode_caesar_cipher(text: &str, shift: u8) -> String {
+    text.chars()
+        .map(|c| {
+            match c {
+                'A'..='Z' => {
+                    let shifted = ((c as u8 - b'A' + 26 - shift) % 26) + b'A';
+                    shifted as char
+                }
+                'a'..='z' => {
+                    let shifted = ((c as u8 - b'a' + 26 - shift) % 26) + b'a';
+                    shifted as char
+                }
+                _ => c, // Keep non-alphabetic characters unchanged
+            }
+        })
+        .collect()
+}
+
