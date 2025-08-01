@@ -14,4 +14,6 @@ Temp README will make it more brief later
 
 
 System dependcies on java
-sudo apt-get install pdftk-java qpdf poppler-utils
+
+
+sudo apt-get install pdftk-java qpdf poppler-utils libglib2.0-dev libcairo2-dev libpoppler-glib-dev
