@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::process::Command;
 use std::fs;
 use std::path::Path;
+use num_cpus;
 
 
 pub type StdError = dyn std::error::Error + Send + Sync + 'static;
@@ -21,6 +22,29 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
         fs::create_dir_all(pdfs_dir)?;
     }
 
+    // Generate output filename based on input PDF filename
+    let pdf_filename = Path::new(file_path)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document");
+    
+    let txt_filename = format!("{}.txt", pdf_filename);
+    let txt_path = pdfs_dir.join(&txt_filename);
+
+    // Check if text file already exists
+    if txt_path.exists() {
+        println!("Text file already exists at {:?}, reading existing content", txt_path);
+        let existing_text = fs::read_to_string(&txt_path)?;
+        if !existing_text.trim().is_empty() {
+            println!("Using existing extracted text ({} characters)", existing_text.len());
+            return Ok(existing_text);
+        } else {
+            println!("Existing text file is empty, re-extracting...");
+        }
+    }
+
+    println!("Text file not found, extracting from PDF...");
+
     // Create temp directory for PDF chunks
     let temp_dir = pdfs_dir.join("temp_chunks");
     if temp_dir.exists() {
@@ -30,19 +54,22 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
 
     // Get total number of pages using pdftk or similar tool
     let total_pages = get_pdf_page_count_accurate(file_path)?;
-    let pages_per_chunk = (total_pages + 7) / 8; // Ceiling division for 8 chunks
-    
-    println!("Total pages: {}, pages per chunk: {}", total_pages, pages_per_chunk);
 
-    // Create page ranges for 8 chunks
-    let page_ranges: Vec<(usize, usize)> = (0..8)
-        .map(|i| {
-            let start = i * pages_per_chunk + 1; // PDF pages are 1-indexed
-            let end = ((i + 1) * pages_per_chunk).min(total_pages);
-            (start, end)
-        })
-        .filter(|(start, end)| start <= end)
-        .collect();
+    // Get number of available CPU cores
+    let num_cores = num_cpus::get();
+    let pages_per_chunk = (total_pages + num_cores - 1) / num_cores; // Ceiling division
+    println!("Total pages: {}, CPU cores: {}, pages per chunk: {}", total_pages, num_cores, pages_per_chunk);
+
+    // Create page ranges for all available cores
+    let page_ranges: Vec<(usize, usize)> = (0..num_cores)
+    .map(|i| {
+        let start = i * pages_per_chunk + 1; // PDF pages are 1-indexed
+        let end = ((i + 1) * pages_per_chunk).min(total_pages);
+        (start, end)
+    })
+    .filter(|(start, end)| start <= end)
+    .collect();
+
 
     println!("Processing {} pages in {} chunks", total_pages, page_ranges.len());
 
@@ -78,14 +105,6 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
         .collect::<Vec<&str>>()
         .join("\n");
 
-    // Generate output filename based on input PDF filename
-    let pdf_filename = Path::new(&**file_path)
-    .file_stem()
-    .and_then(|name| name.to_str())
-    .unwrap_or("document");
-    
-    let txt_filename = format!("{}.txt", pdf_filename);
-    let txt_path = pdfs_dir.join(&txt_filename);
     fs::write(&txt_path, &cleaned_text)?;
     println!("Saved extracted text to {:?}", txt_path);
     Ok(cleaned_text)
