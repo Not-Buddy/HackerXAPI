@@ -66,7 +66,8 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
     let prompt = format!(
         "{}\n\nPlease answer the following questions one by one with this form
         Respond strictly with a JSON array of answer strings only,
-        Ensure answers are atleast 7 words,
+        Ensure answers are atleast 15 words,
+        Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
         Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
         The questions are separated by commas:\n{}",
         policy_content.trim(),
