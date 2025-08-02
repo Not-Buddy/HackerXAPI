@@ -3,6 +3,8 @@ use rayon::prelude::*;
 use std::sync::Arc;
 use std::process::Command;
 use std::fs;
+use std::path::Path;
+
 
 pub type StdError = dyn std::error::Error + Send + Sync + 'static;
 
@@ -13,8 +15,6 @@ pub async fn download_pdf(url: &str, file_path: &str) -> Result<(), Box<StdError
 }
 
 fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
-    use std::path::Path;
-
     // Ensure output dir
     let pdfs_dir = Path::new("pdfs");
     if !pdfs_dir.exists() {
@@ -78,11 +78,16 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
         .collect::<Vec<&str>>()
         .join("\n");
 
-    // Write result file
-    let txt_path = pdfs_dir.join("policy.txt");
+    // Generate output filename based on input PDF filename
+    let pdf_filename = Path::new(&**file_path)
+    .file_stem()
+    .and_then(|name| name.to_str())
+    .unwrap_or("document");
+    
+    let txt_filename = format!("{}.txt", pdf_filename);
+    let txt_path = pdfs_dir.join(&txt_filename);
     fs::write(&txt_path, &cleaned_text)?;
     println!("Saved extracted text to {:?}", txt_path);
-
     Ok(cleaned_text)
 }
 
