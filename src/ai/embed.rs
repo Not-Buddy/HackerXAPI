@@ -174,7 +174,7 @@ pub async fn rewrite_policy_with_context(
     let top_chunks: Vec<String> = chunk_similarities
         .into_iter()
         .take(RELEVANT_CHUNKS)
-        .filter(|(similarity, _)| *similarity > 0.4) // Lower threshold since we're combining questions
+        .filter(|(similarity, _)| *similarity > 0.6) // Lower threshold since we're combining questions
         .map(|(_, text)| text)
         .collect();
     

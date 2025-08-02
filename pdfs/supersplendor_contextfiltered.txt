@@ -2241,7 +2241,8 @@ Loose
 Ok
 Check tyre inflation pressure Under inflated Correct tyre pressure
 Consult Authorised Hero MotoCorp Workshop
-BASIC TROUBLESHOOTINGBASIC TROUBLESHOOTING
+BASIC TROUBLESHOOTING
+BASIC TROUBLESHOOTING
 Check fuse
 Ok
 Inspect battery
