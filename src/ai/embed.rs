@@ -91,8 +91,9 @@ async fn get_single_embedding(text: &str, api_key: &str) -> Result<Vec<f32>> {
 /// Alternative: Return all chunk embeddings instead of averaging
 use futures::stream::{self, StreamExt};
 
-pub async fn get_policy_chunk_embeddings(api_key: &str) -> Result<Vec<(String, Vec<f32>)>> {
-    let policy_path = Path::new("pdfs/policy.txt");
+pub async fn get_policy_chunk_embeddings(api_key: &str, pdf_filename: &str) -> Result<Vec<(String, Vec<f32>)>> {
+    let txt_filename = format!("pdfs/{}.txt", pdf_filename);
+    let policy_path = Path::new(&txt_filename);
     if !policy_path.exists() {
         return Err(anyhow!("File {:?} does not exist", policy_path));
     }
@@ -145,7 +146,9 @@ fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
 pub async fn rewrite_policy_with_context(
     api_key: &str,
     questions: &[String],
-    chunk_embeddings: &[(String, Vec<f32>)], // Add this parameter
+    chunk_embeddings: &[(String, Vec<f32>)],
+    pdf_filename: &str,
+
 ) -> Result<()> {
     // Combine all questions into a single text for embedding - this is already batched
     let combined_questions = questions.join(" ");
@@ -187,10 +190,9 @@ pub async fn rewrite_policy_with_context(
         new_content.push_str("No highly relevant context found for these questions.\n\n");
     }
     
-    // Write the new content to contextfilered.txt
-    let context_path = Path::new("pdfs/contextfiltered.txt");
+    let context_filename = format!("pdfs/{}_contextfiltered.txt", pdf_filename);
+    let context_path = Path::new(&context_filename);
     fs::write(context_path, new_content)?;
-
-    println!("Successfully wrote relevant context to pdfs/contextfiltered.txt");
+    println!("Successfully wrote relevant context to {}", context_filename);
     Ok(())
 }

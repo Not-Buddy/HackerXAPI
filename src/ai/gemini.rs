@@ -42,32 +42,35 @@ outer_array
 
 
 
-pub async fn call_gemini_api_with_txts(questions: &[String]) -> Result<Vec<String>> {
+pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str) -> Result<Vec<String>> {
     // Start measuring time
     let start_time = Instant::now();
 
     dotenvy::dotenv().ok();
     let api_key = env::var("GEMINI_KEY").map_err(|_| anyhow!("GEMINI_KEY not found in env"))?;
 
-    // Path to the filtered context file
-    let context_path = Path::new("pdfs/contextfiltered.txt");
+    // Path to the filtered context file (dynamic based on PDF filename)
+    let context_filename = format!("pdfs/{}_contextfiltered.txt", pdf_filename);
+    let context_path = Path::new(&context_filename);
+
     if !context_path.exists() {
-        return Err(anyhow!("File {:?} does not exist", context_path));
-    } 
-let policy_content = fs::read_to_string(context_path)?;
+    return Err(anyhow!("Context filtered file {:?} does not exist", context_path));
+    }
 
-let client = Client::new();
+    let policy_content = fs::read_to_string(context_path)?;
 
-// Construct the single prompt:
-let questions_joined = questions.join(", ");
-let prompt = format!(
-    "{}\n\nPlease answer the following questions one by one with this form
-    Respond strictly with a JSON array of answer strings only,
-    Ensure answers are atleast 7 words,
-    Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
-    The questions are separated by commas:\n{}",
-    policy_content.trim(),
-    questions_joined
+    let client = Client::new();
+
+    // Construct the single prompt:
+    let questions_joined = questions.join(", ");
+    let prompt = format!(
+        "{}\n\nPlease answer the following questions one by one with this form
+        Respond strictly with a JSON array of answer strings only,
+        Ensure answers are atleast 7 words,
+        Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting—only a plain JSON array. \
+        The questions are separated by commas:\n{}",
+        policy_content.trim(),
+        questions_joined
 );
 
 
