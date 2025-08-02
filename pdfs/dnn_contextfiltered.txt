@@ -1,0 +1,1495 @@
+Optimization of DNN-based HSI Segmentation FPGA-based
+SoC for ADS: A Practical Approach
+JON GUTIÉRREZ-ZABALLA and KOLDO BASTERRETXEA, University of the Basque Country
+(UPV/EHU), Spain
+JAVIER ECHANOBE, University of the Basque Country (UPV/EHU), Spain
+The use of hyperspectral imaging (HSI) for autonomous navigation is a promising field of research that aims to
+improve the accuracy and robustness of detection, tracking, and scene understanding systems based on vision
+sensors. The combination of advanced computer algorithms, such as deep neural networks (DNNs), and small-
+size snapshot HSI cameras allows to strengthen the reliability of those vision systems. Using HSI, some intrinsic
+limitations of greyscale and RGB imaging in depicting physical properties of targets related to the spectral
+reflectance of materials (metamerism) are overcome. Despite the promising results of many published HSI-
+based computer vision developments, the strict requirements of safety-critical applications such as autonomous
+driving systems (ADS) regarding latency, resource consumption, and security are prompting the migration
+of machine learning (ML)-based solutions to edge platforms. This involves a thorough software/hardware
+co-design scheme to distribute and optimize the tasks efficiently among the limited resources of computing
+platforms. With respect to inference, the over-parameterized nature of DNNs poses significant computational
+challenges for real-time on-the-edge deployment. In addition, the intensive data preprocessing required
+by HSI, which is frequently overlooked, must be carefully managed in terms of memory arrangement and
+inter-task communication to enable an efficient integrated pipeline design on a system on chip (SoC). This
+work presents a set of optimization techniques for the practical co-design of a DNN-based HSI segmentation
+processor deployed on a field programmable gate array (FPGA)-based SoC targeted at ADS, including key
+optimizations such as functional software/hardware task distribution, hardware-aware preprocessing, ML
+model compression, and a complete pipelined deployment. Applied compression techniques significantly
+reduce the complexity of the designed DNN to 24.34% of the original operations and to 1.02% of the original
+number of parameters, achieving a 2.86x speed-up in the inference task without noticeable degradation of the
+segmentation accuracy.
+CCS Concepts: • Computing methodologies → Hyperspectral imaging; Scene understanding; Neural networks;
+• Computer systems organization → System on a chip; • Hardware → Hardware accelerators.
+Additional Key Words and Phrases: Hardware/Software Co-Design, Snapshot Camera, Neural Network
+Compression.
+ACM Reference Format:
+Jon Gutiérrez-Zaballa, Koldo Basterretxea, and Javier Echanobe. 2025. Optimization of DNN-based HSI Seg-
+mentation FPGA-based SoC for ADS: A Practical Approach. 1, 1 (July 2025), 27 pages. https://doi.org/10.1145/
+nnnnnnn.nnnnnnn
+Authors’ addresses: Jon Gutiérrez-Zaballa, j.gutierrez@ehu.eus; Koldo Basterretxea, koldo.basterretxea@ehu.eus, De-
+partment of Electronics Technology, University of the Basque Country (UPV/EHU), Bilbao, Spain; Javier Echanobe,
+franciscojavier.echanove@ehu.eus, Department of Electricity and Electronics, University of the Basque Country (UPV/EHU),
+Leioa, Spain.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and
+the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored.
+Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires
+prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+© 2025 Association for Computing Machinery.
+XXXX-XXXX/2025/7-ART $15.00
+https://doi.org/10.1145/nnnnnnn.nnnnnnn
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+©2025 Copyright held by the owner/author(s). This is the author’s version of the work.
+It is posted here for your personal use. Not for redistribution. The definitive version of record
+was published in ACM Transactions on Embedded Computing Systems 10.1145/3748722.arXiv:2507.16556v1  [cs.CV]  22 Jul 2025
+2 Gutiérrez-Zaballa et al.
+1 INTRODUCTION
+The application of deep learning techniques, especially fully convolutional networks (FCN) [1], has
+boosted the advances in the field of image segmentation [2], improving the ability of AI algorithms
+to accurately recognise objects within images across various application domains including medical
+imaging [3], remote sensing [4] and food industry [5], among others. Nevertheless, a remarkable
+challenge arises when objects with different spectral signatures appear similar under specific
+lighting conditions, complicating object segmentation. This phenomenon, known as metamerism,
+is a concern for many RGB-based image processing applications [6].
+To address this phenomenon, recent studies have explored the use of hyperspectral imaging (HSI)
+as a robust and efficient potential solution to acquire spectral information across a wider range of
+wavelengths, providing the discriminative AI-based algorithm with richer input. When discussing
+HSI, it is important to distinguish between two concepts that are often interchangeably used in
+the literature. On the one hand, some researchers are evaluating whether HSI in the visible range
+yields better results than traditional RGB images. On the other hand, there is a line of research
+investigating whether utilizing information beyond the visible spectrum, regardless of whether it
+involves HSI, can lead to more accurate and robust segmentations. Regarding the potential benefits
+of using HSI over RGB, the authors of [7] review several studies from different industries, such as
+agriculture, food assessment, healthcare, and automotive, where superior performance is achieved
+by using HSI. More recently, [8] for robot navigation and [9] for facade segmentation have also
+found that HSI leads to clearer decision boundaries between classes.
+Currently, the potential for HSI to be applied to dynamic environments such as autonomous
+driving systems (ADS), where accurate and timely data interpretation is crucial for ensuring pas-
+sengers’ safety, has become more feasible due to the emergence of compact snapshot hyperspectral
+cameras [10–12]. This technology allows for the simultaneous capture of object reflectance across
+a multitude of wavelengths in a single shot at video rates. Nonetheless, hyperspectral sensors,
+and especially snapshot sensors, usually require a computationally costly preprocessing stage
+to convert the acquired 2D raw data into 3D hyperspectral cubes. This step is often overlooked
+by neural network developers, as the images used for training and testing are typically prepro-
+cessed beforehand. In addition to this, the promising results of combining HSI with deep neural
+networks (DNNs) very often come at the cost of using over-parameterized deep learning models,
+leading to high computational complexity. These DNNs typically contain millions of parameters
+and require the execution of billions of computation operations (floating-point, FLOPS or integer,
+OPS) per inference, posing significant challenges for the on-the-edge deployment of safety-critical
+applications.
+In order to efficiently implement a complete segmentation pipeline in an embedded computing
+platform, careful planning using a refined hardware/software co-design methodology is required.
+This scheme is essential to optimize the efficient integration of the different stages of the complete
+processing pipeline: raw data to hyperspectral cube preprocessing, data storage and arrangement in
+memory, data communication, and DNN inference. Besides, a key consideration in this process is the
+identification and mitigation of potential bottlenecks that may limit overall performance. Therefore,
+it is imperative to develop optimized solutions that can ensure reliable and fast performance.
+Given these challenges, implementing these models on field programmable gate arrays (FPGAs)
+and FPGA-based system on chips (SoCs) emerges as a promising solution. FPGAs and programmable
+SoCs enable the design of domain-specific processors tailored to each use case, facilitating optimized
+resource usage, power efficiency, and low latency while allowing for reconfigurability when needed.
+This adaptability makes these platforms ideal for deploying advanced HSI-based segmentation
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 3
+models in resource-constrained applications, paving the way for more effective and reliable systems
+in ADS applications and beyond.
+In this article, a holistic design approach for a DNN-based HSI segmentation pipeline optimized
+for FPGA-based SoCs is presented. The target platform has been AMD-Xilinx’s KV260 board (see
+Figure 1), which is tailored for edge vision applications and integrates the K26 SOM with a Zynq
+UltraScale+ MPSoC, where the segmentation performance and optimizations were evaluated.USB  3.0
+K26 SOM
+Module
+with
+FansinkMicroSD
+RJ45 Eth.HDMIDisp. PortDC Jack
+KV260
+ZYNQ MPSoC
+CCI
+Coherency
+And Bypass
+DDR4 DDR4 DDR4 DDR4
+DDR Memory Controller
+APU
+MPCoreFPDMainSwitch
+א א
+א
+LPD
+Main Switch א
+Programmable
+logicS_AXI_HP(FPD)M_AXI_HPM(FPD)S_AXI_LPD
+M_AXI_HPM_LPD
+S_AXI_ACP_FPD
+S_AXI_ACE_FPE
+ARM Cortex–A53
+ACP SCU L2 w/ECC (128kB – 2MB)
+I-cache w/parity D-cache w/parity
+Floating-point
+unit
+NEON SIMD
+engineARMV8-A
+64b CPU
+Core 1 2 3 4
+Image acquisition and
+preprocessing
+DNN inference
+PE PE PEConv. engineComp. engine
+Programmable logic (DPUCZDX8G architecture)MiscengineInstructionschedulerFetcher
+Decoder
+DispatcherOn-chip buffer controllerData mover
+On-chip BRAM
+BRAM reader/writer
+Fig. 1. Diagram of the DNN-based segmentation pipeline. Left, KV260 board, adapted from [13]; centre,
+Zynq UltraScale+ MPSoC, adapted from [14], and right, Application Processing Unit, adapted from [15] and
+Programmable Logic, adapted from [16].
+This hardware/software co-design methodology and DNN architecture selection are aligned
+with the platform constraints to maximize efficiency. The optimization techniques applied through-
+out the design process, from raw data preprocessing to DNN inference deployment are detailed.
+Preprocessing stages leverage data- and thread-level parallelism, with some steps offloaded to
+hardware when feasible. Computational profiling identifies suitable DNN compression techniques
+and assesses the need for multi-stage pipelined preprocessing to mitigate bottlenecks.
+For DNN inference, the rigidity of the K26 SOM’s accelerator in quantized parameter repre-
+sentation and its lack of support for sparse matrix multipliers led to focus on channel pruning.
+The proposed iterative pruning method combines static and dynamic analyses to define pruning
+targets and assess their feasibility, while ensuring minimal impact on inference quality. It is also
+explained how to assess whether the initially set pruning ratio is excessive, or if further pruning
+can be applied in subsequent iterations without degrading performance.
+Applied to this segmentation U-Net for the HSI-Drive v2.0 dataset [17, 18], this optimization
+scheme reduces inference operations by an order of magnitude and the number of parameters
+by two orders of magnitude, while preserving performance. It also improves resource and power
+efficiency, making deployment more practical.
+The rest of the article is organized as follows. Section 2 covers the related work, including
+current HSI databases for ADS, state-of-the-Art (SotA) deep learning models for ADS and current
+pruning-based DNN model optimization strategies. In Section 3, the training and testing dataset,
+HSI-Drive v2.0 [17, 18], is described as well as the modified version of the original U-Net [19]. The
+testing results against a SotA model are also compared there. Section 4 details the compressing
+operations applied to the baseline model, with particular emphasis on both the static and dynamic
+analyses of the model and the iterative pruning methodology. The preprocessing of the raw images
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+4 Gutiérrez-Zaballa et al.
+is explained in Section 5, which also includes a discussion about the optimal memory arrangement
+of the hyperspectral cubes. Finally, Section 6 provides details on the deployment of the complete
+pipeline (including raw data loading, preprocessing, cube transmission, and segmentation) on the
+KV260 board. Different configurations of the pipeline with 1, 2 and 3 stages are presented and the
+performance of varying configurations of the K26’s deep processing unit (DPU) is characterized in
+terms of latency, throughput and power consumption. The article concludes with a discussion of
+the key findings in Section 7.
+2 RELATED WORK
+The development of DNN-based HSI segmentation systems that are suitable for deployment on
+ADS embedded platforms requires firstly, the availability of a training dataset specifically designed
+for this task. The performance of the resulting model, which is preferably based on network
+architectures that will eventually do not demand excessive computing, must be compared against
+SotA segmentation models on reference benchmarks available to the scientific community. Finally,
+the obtained baseline models must be optimized for hardware implementation, a process that must
+be guided by the specifications of the target application. In this section, a brief review of previous
+work published in this regard is provided.
+2.1 Hyperspectral Datasets for Autonomous Driving Systems
+Hyko and Hyko v2.0. The authors have acquired both VIS and NIR images using two snapshot
+mosaic imaging cameras [20]. However, most NIR images, primarily of asphalt, are usually omitted
+for the experiments [21]. The latest version contains 371 VIS images (254x510x15) that depict both
+urban and rural scenes and are labelled to distinguish between 10 different classes. More than half
+(58.3%) of the papers that cite Hyko mention it as part of the related work, typically referencing it
+as an example of other applications using HSI or as another dataset focused on HSI segmentation
+in ADS. In addition to this, about 16.7% of the papers have used Hyko to test the effectiveness of
+their demosaicing methods for snapshot HSI cameras. Finally, the remaining 25% of the works
+employ the dataset for neural network training and testing, but they do not include any discussion
+regarding model optimization or deployment on hardware.
+Hyperspectral City and Hyperspectral City v2.0. The authors collected 1,330 images covering
+the 450-950nm VIS-NIR spectral range using LightGene camera sensor and contain up to 19 classes
+from urban scenarios [22, 23]. The images have high spatial (1889x1422) and spectral (128) resolution,
+so each hyperspectral cube takes more than 1GB, making on-board processing difficult. More than
+half (62.5%) of the papers that reference Hyperspectral City do so in their related work sections,
+while the remaining 37.5% of the papers use the dataset for training or testing their neural networks,
+but none report its deployment on hardware.
+HSI Road. This dataset contains both 192x384 RGB and 25-band VNIR (680-960nm) images
+captured with a progressive scan colour camera and a snapshot mosaic imaging camera respectively
+[24]. Even though the 3,799 images are from rural and urban scenes, the authors only differentiate
+between two classes: background and road. Nearly all (92.86%) papers cite HSI Road in their
+related work or introduction sections. In addition, it has been cited once in a review on sensing
+technologies and once in a paper where it was used as a training/testing database, though no
+hardware deployment has been reported.
+HSI-Drive and HSI-Drive v2.0. HSI-Drive contains 752 cubes (216x409x25) captured with a
+snapshot mosaic imaging camera covering the 535-975nm spectral range [17, 18, 25]. The images
+contain 10 categories and are structured according to road type, time of day, season, and envi-
+ronmental conditions. Apart from previous studies, HSI-Drive has mainly been cited in reviews
+discussing sensing for ADS in variable weather conditions (20%) or as part of the related work,
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 5
+highlighting other HSI application areas or datasets focused on HSI segmentation in ADS (80%).
+Similarly, all citations of HSI-Drive v2.0 fall into this latter category. No prior work has focused on
+the training or efficient deployment of HSI-based semantic segmentation processors.
+HyperDrive. Although HyperDrive is primarily designed for robots navigating in unstructured
+environments, its relevance to this application warrants mention [8]. It includes data captured by
+two VNIR and NIR point spectrometers, along with two snapshot mosaic VNIR and SWIR imaging
+cameras, producing hyperspectral cubes of 1012x1666 pixels with 33 spectral bands, covering the
+660-900nm and 1100-1700nm ranges respectively. The dataset is complemented by high-resolution
+RGB images acquired with an Allied Vision camera. Since this database is relatively new, few
+studies have utilized it: just one paper references it in the related work section, while another uses
+it for model training, although no hardware deployment has been reported.
+Overall, although some articles have used these datasets to train neural networks for ADS scene
+segmentation, none report implementations on embedded computing platforms.
+2.2 State-of-the-Art Deep Neural Networks for computer vision-based Autonomous
+Driving Systems
+Prior to this research, the only HSI benchmark for ADS applications was based on the Hyperspectral
+City v2.0 dataset [23], with few competing models. A second benchmark, HS3-Bench [21], was
+proposed afterward, but it is too recent to be considered a reference. This new benchmark combines
+three HSI datasets that are radically different in nature: Hyko, Hyperspectral City, and HSI-Drive,
+all in their most up-to-date versions. Consequently, it appears challenging to find a model that
+achieves optimal results across all three datasets. However, when analysing just the HSI-Drive
+dataset part, the best results are obtained with a regularized U-Net, a DNN which is very similar to
+the one employed in this study. No details are provided regarding any implementation on embedded
+hardware.
+Since there is no reference HSI ADS benchmark, several RGB-based benchmarks with similar
+applications were reviewed (e.g. CityScapes [26], BDD100K [27], CamVid [28], Mapillary Vistas
+[29], and Apolloscape [30]). Given that CityScapes is the most cited dataset on Google Scholar, it
+was selected as the reference for model comparison. At the time of writing, Intern Image [31] was
+the highest-ranked model among those sharing code for reproducibility [32], making it the choice.
+Intern Image [31] is based on a deformable convolution operation that allows for a big receptive field
+which may be necessary for image detection and segmentation tasks where it could be beneficial
+to aggregate long-range spatial information. The basic block composes layer normalization, feed
+forward network and Gaussian error linear unit activation layer. The rest of the SotA models that
+share some details about their architecture are all based on vision language models as the case of
+VLT [33] (third position in both rankings) but, as the authors admit, those models are not applicable
+to real-time settings [33].
+2.3 Current Pruning Methods
+Model pruning is based on the idea of removing the least significant parameters from a model based
+on specific criteria. Currently, the scientific community agrees that pruning a large, sparse model
+generally yields better results than training a smaller, dense model from scratch [34]. As a result,
+various pruning methods have emerged which can be differentiated by three main characteristics:
+sparsity, criteria, and time.
+Pruning sparsity can be classified as fine-grained/sparse/unstructured, when individual weights
+are set to zero, or as coarse-grained/dense/structured, when entire filters or layers are removed from
+the computational graph. Fine-grained pruning typically allows for more weights to be removed
+without significantly harming performance, but is only effective if the underlying hardware can
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+6 Gutiérrez-Zaballa et al.
+optimize operations with sparse matrices. Regarding the criteria, there are several options that are
+commonly used nowadays, such as L1, L2, cosine similarity [35], or change in loss [36].
+Pruning has traditionally been performed after model training for image classification, followed
+by fine-tuning to mitigate accuracy loss. Given its effectiveness, this technique continues to be
+employed and refined today, as demonstrated in [37], which explores accurate post-training pruning.
+Similarly, pruning has been adapted for modern transformer-based models, as shown in [38] and
+[39].
+The lottery ticket hypothesis [40] sparked interest in pre-training and training-aware pruning
+to optimize models more efficiently, particularly for classification tasks. It proposes that within a
+randomly initialized dense network, a subnetwork exists that, when trained in isolation, matches the
+original model’s performance. This idea was challenged by [41], who showed that re-randomized
+subnetworks could perform even better. Subsequently, [40] introduced iterative pruning, achiev-
+ing superior results over one-shot pruning and complicating the notion of early winning ticket
+identification. The hypothesis was revisited in [42], suggesting that randomly initialized subnet-
+works could perform well without further training, shifting focus to efficient subnetwork search.
+Building on this, [43] improved the search process, identifying untrained subnetworks nearing
+state-of-the-art performance on datasets like CIFAR-10 and ImageNet. Finally, [44] formalized the
+strong lottery ticket hypothesis under overparameterization and weight distribution assumptions,
+though highlighting the computational difficulty of finding such subnetworks.
+Despite its progress, network pruning faces several challenges. Most studies focus on image
+classification with small datasets, limiting generalizability. This raises the question of whether
+tasks like semantic segmentation, explored in this article, could similarly benefit, a topic still
+underexplored [45]. Moreover, the lack of unified benchmarks hampers fair comparison across
+methods. To address this, the authors of [46] maintain a repository compiling pruning-related
+papers and open-source implementations.
+Given the scope of this work, the pruning approaches tailored to segmentation tasks are high-
+lighted, particularly those applied before or during training, which remain less explored. For a
+comprehensive review of general pruning methods, readers are referred to [45] and [46].
+Pruning at initialization for image segmentation has recently been explored in [47] and [48].
+The authors of [47] found that pruning at initialization led to slightly inferior performance due
+to reduced model capacity, with the effect expected to be more pronounced on complex datasets.
+Similarly, [48] investigated pruning at initialization for pre-trained models, concluding that dense
+network performance could only be approximated at very low sparsity levels.
+Pruning during training is closely tied to data variability, which affects training stability and
+convergence. For example, the authors of STAMP [49] applied pruning during training on the
+Medical Decathlon datasets, benefiting from the low variability in MRI and CT scans, leading to
+smoother convergence. The authors of [47] also showed that pruning at the end of training causes
+a significant performance drop, although the absence of a reported stopping criterion raises the
+possibility of overfitting contributing to this decline. Finally, the success of transformer-based
+segmentation models has driven the development of specialized pruning strategies, as shown by
+[50] and [51]. However, these methods still result in models with millions of parameters and require
+substantial computational resources, often more than a GPU-day, to search for pruned architectures.
+3 MODEL’S DEVELOPMENT
+For this study, a U-Net architecture was selected as the reference DNN for segmentation. The
+encoder-decoder network was trained and evaluated on the HSI-Drive v2.0 dataset [17, 18].
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 7
+3.1 Evaluation Dataset
+HSI-Drive v2.0 (Figure 2b) is a hyperspectral imaging database acquired with a small-size snapshot
+HSI camera. It contains more than 750 manually annotated images of real driving scenarios that
+aims to facilitate research on the use of HSI in the development of ADS.
+In this experiment, the ground truth (Figure 2a) is composed of 5 classes: Road (Tarmac), Marks
+(Road Marks), Vegetation, Sky and Others. As Vegetation and Sky are usually part of the surround-
+ings and the background, the experiment allows for the detection of potential obstacles such as
+vehicles, cyclists or pedestrians which may demand responsive actions. This, in turn, could enhance
+ADS capabilities like emergency braking or collision alert systems.
+(a) Ground truth. (b) False-RGB.
+Fig. 2. Ground truth (left) and false-RGB (right) of image 721, an example of HSI-Drive v2.0 [17, 18].
+3.2 Model Architecture, Training, and Data Stratification
+The base image segmentation DNN in this study is U-Net [19], an encoder-decoder FCN which
+has been adapted to perform semantic segmentation on HSI. Unlike the original U-Net, which was
+designed for two-class RGB biomedical image segmentation with a 4-level encoder-decoder and 64
+initial filters, this adaptation optimizes the architecture for 25-band HSI.
+The hyperparameters of the reference non-compressed model were optimized via a grid search
+on encoder-decoder depth and the initial number of filters, as detailed in [17]. The resulting
+DNN consists of a 5-level encoder-decoder architecture, where each basic block comprises a 2D
+convolutional layer (𝑐𝑜𝑛𝑣2𝐷) followed by a batch normalization (BN) (not present in the original
+U-Net) and ReLU activation. Each encoder and decoder level, as well as the base, contains two of
+these blocks. In the encoder, the basic block is preceded by a 2D max-pooling layer (except for the
+input layer) and ends with a dropout layer (also not present in the original U-Net). In the decoder,
+the basic block is preceded by a transposed 𝑐𝑜𝑛𝑣2𝐷. The first convolutional block contains 32 filters
+instead of 64, and the same strategy as in the original U-Net is maintained: doubling the number
+of filters while reducing the spatial resolution in the encoder and halving the number of filters
+while increasing the resolution in the decoder (Figure 2 in [52]). This U-Net thus contains 31.125 M
+parameters, occupying 118.73 MB of memory, and requires 34.90 GFLOPS per inference to segment
+each image frame.
+The training, validation and testing of the models has been done following a stratified 5-fold
+cross-validation. This implies dividing the dataset into 5 subsets (3 for training, 1 for validation
+and 1 for testing) and then performing 5 different training/validation/testing rounds where in each
+round the folds are shifted from subset to subset.
+Training has been performed on a Dell Precision Tower 7920 featuring an Intel Xeon Silver 4216
+CPU (16 cores, 32 threads and 2.10 GHz) equipped with an NVIDIA GeForce RTX 3090 with 24GB
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+8 Gutiérrez-Zaballa et al.
+of GDDR6 VRAM. The training, repeated 3 times to avoid biased results from poor random Glorot
+initialisation, has completed a maximum of 200 epochs (early stopping was activated) using Adam
+optimizer with an initial learning rate of 0.001 and employing shuffled mini-batches of size 30.
+For more information regarding the model’s architecture and the training procedure, the reader is
+referred to [52].
+3.3 Comparison Against SotA Models
+The simplicity of the U-Net layers, compared to the complex, novel operators of some SotA models,
+makes it more appropriate for implementations on embedded computing devices. However, it is
+worth considering whether the use of more sophisticated models could lead to higher performance
+in terms of accuracy. To address this question, InterImage [31] was selected, a SotA segmentation
+model that ranks highest among those with publicly available code for reproducibility in the
+CityScapes benchmark [32]. Selecting T variant and modifying its input and first convolutional
+block to make it compatible with HSI results in a model with 58.97 M parameters, a size of 224.95
+MB and 66.05 GFLOPS, which almost doubles the figures of U-Net.
+Regarding segmentation metrics, the two models are compared in Table 1 in terms of Intersection
+over Union (IoU), since it provides a balanced measure that accounts for both precision and recall.
+As global metrics are biased towards the most predominant class, a result of real-world data
+distribution, class-weighted metrics are also calculated mitigating the over-representation of large
+classes. As for U-Net, the obtained precision is higher than 90% for every class and both the recall
+and the IoU are higher than 85% except for the most diverse class, Other. Comparing both models,
+this U-Net model outperforms the SotA model in terms of global IoU (gIoU) and weighted IoU
+(wIoU), that is, the performance ceiling is constrained by the dataset quality and quantity rather
+than by the model’s ar
+
+---
+
+t it could be worth exploring asymmetric encoder-decoder architectures
+with deeper encoder branches and lighter decoder even though, as discussed in Section 3.3, the
+recent hyperspectral benchmark HyperSeg [21] achieved better results on the same dataset using
+a U-Net compared to DeepLabv3+ [61], despite the latter having a more complex encoder and
+significantly simplified decoder.
+5 INTEGRATING RAW DATA PREPROCESSING IN DNN CO-DESIGN
+The basic preprocessing of HSI-Drive v2.0 raw images (see orange boxes in Figure 11) includes
+the following stages: cropping and clipping, reflectance correction through dark and flat images,
+partial demosaicing and band alignment via spatial bilinear interpolation (see [7] for a detailed
+description).
+Reflectance
+correction
+Partial
+demosaicing
+(216x409x25)
+(1088 x 2048)
+Acquisition Band
+alignment
+(216x409x25)
+Cropping
+(192x384x25)
+BSQ to BIP
+(192x384x25)
+FCN
+(192x384x25)
+Basic cube generation pipeline Training and on-board inference steps On-board inference step Input/output
+Image
+cropping and
+clipping
+(1080 x 2045)
+INT 16
+Row-based
+Cortex-A53
+PN norm.
+(192x384x25)
+Clipping
+(192x384x25)
+Symmetric
+norm.
+(192x384x25)
+(1080 x 2045)
+FLOAT 32
+Row-based
+Cortex-A53
+FLOAT 32
+BSQ
+Cortex-A53
+FLOAT 32
+BSQ
+Cortex-A53
+INT 16
+Row-based
+FLOAT 32
+BSQ
+Cortex-A53
+FLOAT 32
+BIP
+Cortex-A53
+FLOAT 32
+BIP
+Cortex-A53
+INT 8
+BIP
+DPU
+INT 8
+BIP
+DPU
+FLOAT 32
+BIP
+Cortex-A53
+Fig. 11. Pipeline scheme comprising from raw image preprocessing to DNN inference. In each step, information
+about image size, data representation, memory arrangement and task distribution is provided.
+Additionally, to adapt the cube for the U-Net architecture, an extra cropping or padding step
+is required due to the mismatch between the cube’s spatial size (216x409) and the DNN encoder-
+decoder architecture with a depth of 5 (see Section 3.2). The spatial size must be a multiple of
+2𝑑𝑒𝑝𝑡ℎ_𝑙𝑒𝑣𝑒𝑙 , so the nearest valid sizes are 192x384 (requiring cropping) and 224x416 (requiring
+padding). Padding could introduce issues with pixel values at the edges, which would hinder
+efficient preprocessing. Given these considerations and the suitability of 192x384 resolution for the
+application, cropping has been chosen. Notably, this cropping step cannot be combined with the
+initial one, as the edge pixels resulting from the band alignment process require data that would be
+missing if cropped earlier.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+18 Gutiérrez-Zaballa et al.
+Apart from that, applying per-pixel normalization (PN) is recommended to generate a cube robust
+to varying lighting conditions. However, applying PN alters the data distribution, concentrating
+most of the values around 0.04 (the inverse of 25, the spectral size) and making the interval [0, 0.08]
+contain 99.72% of all pixel values (see [53]). If the DNN is to be quantized, applying image clipping
+is then beneficial. Clipping according to the channel distribution accurately represents 99.95%
+of the data, saving 3 integer bits to enhance quantization process resolution. Finally, symmetric
+normalization is applied during training, accelerated by hardware (see Section 6.2), and used as
+the DNN input. The full pipeline, including data sizes, data representations, and ARM/DPU task
+distribution, is shown in Figure 11.
+Several constraints impact the efficiency of data representation. First, the camera outputs a
+1088x2048 frame with 5x5 tiles in row-major order (see Figure 12b). Second, the AMD-Xilinx
+DPUCZDX8G inference engine requires data in Band Interleaved by Pixel (BIP) format. Third,
+cropping must be applied after band alignment to preserve edge spatial information. Finally, some
+operations are channel-wise (e.g., band alignment, cropping), while others are pixel-wise (e.g., PN
+norm, clipping, symmetric norm).
+Considering these constraints, converting raw data to Band Sequential (BSQ) format is more
+efficient initially since BSQ stores each band sequentially, matching the row-major order and
+improving memory access. Channel-wise operations benefit from BSQ’s consecutive spatial storage,
+whereas pixel-wise operations are faster in BIP, which stores spectral data contiguously (Figure
+12a). As shown in Figure 11, BSQ-favourable steps are performed early in the pipeline to optimize
+data transfer and speed, while BIP-favourable steps occur just before inference.
+A B
+Y Z
+C0
+C12
+C24
+BIPA B
+A Y
+Y Z
+B Z BSQ
+…
+… ……
+(a) Band interleaved by pixel (BIP) and band sequential
+format (BSQ) data organizations. (b) A 10x15 frame containing six 5x5 tiles.
+Fig. 12. Comparison of cube data organization in memory (left). The hyperspectral Fabry-Perot filter array
+used during raw-image acquisition (right).
+This approach allows loading entire rows into cache, reducing cache misses and accelerating
+processing. In contrast, BIP leads to scattered memory access and lower performance. Thus, con-
+verting the 2D raw image into a 3D BSQ cube enables faster, more efficient processing. Overall, the
+most efficient solution is to convert from BSQ to BIP mid-pipeline, as illustrated in Figure 11. The
+next section details the reordered operations to save computational time.
+6 DNN DEPLOYMENT AND COMPUTATIONAL PROFILING
+6.1 Hardware Selection
+ADS applications demand low power, cost efficiency, high throughput, and minimal latency. The
+AMD-Xilinx KV260 is well-suited for these needs, offering adaptable, high-performance AI pro-
+cessing at the edge, ensuring rapid development and production-ready solutions [13]. At the core
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 19
+of development board is the K26 SOM, which features a Zynq UltraScale+ MPSoC (see Figure 1).
+This includes a 64-bit quad-core ARM Cortex-A53 processor and a dual-core Cortex-R5F real-time
+processor within the processing systems, all integrated with a 16nm FinFET Programmable Logic
+(PL). The system accesses a 4 GB, 64-bit wide DDR4 external memory with a speed of 2400 Mb/s
+[14]. The PL can accommodate up to four DPU cores, which utilise high-speed data pathways and
+parallel processing elements optimized for fixed-point arithmetic units [16]. The heterogeneous ar-
+chitecture of the K26 SOM allows for the optimization of the deployment of AI models by offloading
+the execution of the corresponding tasks to both parts of the SOM.
+The DPU incorporates several on-chip memory banks, including block RAM (BRAM) and Ultra-
+RAM, to store weights, biases, and intermediate feature maps. Each block RAM holds 36Kb and
+can be configured as 4096x9b, 2048x18b, or 1024x36b, while each UltraRAM provides 288Kb with a
+fixed configuration of 4096x72b. UltraRAM can be used to replace BRAM in systems with limited
+BRAM resources, making it particularly useful in specific hardware implementations, such as the
+softmax function, which uses four BRAMs [16].
+In total, the DPU allocates up to 17 memory banks (256 KB per bank) for storing weights. Given
+that the pruned U-Net with 320K 8-bit parameters (including biases) would occupy only two
+memory banks, there is still potential room for parallel data access by utilizing additional banks.
+Additionally, the DPU dedicates one memory bank (32 KB) for biases and up to 24 memory banks
+(128 KB per bank, for a total of 3 MB) for activations.
+DPU architectures are categorized based on their peak operations per cycle, determined by
+pixel parallelism, input channel parallelism, and output channel parallelism. Smaller DPUs, which
+contain fewer DSPs, offer lower computational throughput and fewer weight banks, although they
+maintain the same number of bias and activation banks as larger configurations (see Table 4).
+Table 4. Resource usage of the various DPU configurations
+Parameter / DPU name B4096 B3136 B3136 B2304
+Pixel parallelism 8 8 8 8
+Input channel parallelism 16 14 14 12
+Output channel parallelism 16 14 14 12
+DSP 710 566 566 438
+RAM usage low high low high
+Number of bias banks 1 1 1 1
+Number of weight banks 17 15 15 13
+Number of activation banks 16 24 16 24
+BRAM 75 130 78 110
+URAM 48 40 40 36
+LUTs 50332 50007 48632 45100
+Flip flops 99035 82505 81008 71298
+The whole segmentation pipeline was coded in C++ (2017 standard) and cross-compiled for
+execution as an embedded system within a custom PetaLinux distribution, running on the KV260.
+Following the methodology employed in prior studies [7, 53], the performance was optimized by
+combining data-level parallelism using SIMD techniques [54] with thread-level parallelism via
+OpenMP pragmas [62], effectively reducing computational latency.
+6.2 Hardware-accelerated Cube Preprocessing Steps
+As explained in Section 5, the last preprocessing step of the raw data is the symmetric normalization,
+which fits the input cubes to [-1, 1) range. It can be seen in Equation 3 that channel-wise symmetric
+normalization is equivalent to a depthwise convolution operation (weight values are 2
+𝑚𝑎𝑥𝑖 −𝑚𝑖𝑛𝑖 and
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+20 Gutiérrez-Zaballa et al.
+bias values are ( 2∗𝑚𝑖𝑛𝑖
+𝑚𝑖𝑛𝑖 −𝑚𝑎𝑥𝑖 − 1)), so this layer can be inserted between the input layer and the first
+convolutional layer, enabling its acceleration by the DPU
+ˆ𝑥𝑖 = 2 ∗ 𝑥𝑖 − 𝑚𝑖𝑛𝑖
+𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 − 1 = 2
+𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 ∗ 𝑥𝑖 + ( 2 ∗ 𝑚𝑖𝑛𝑖
+𝑚𝑖𝑛𝑖 − 𝑚𝑎𝑥𝑖 − 1) (3)
+where 𝑥𝑖 is the unnormalized 192x384 slice of channel 𝑖, 𝑚𝑎𝑥𝑖 is the maximum value of channel 𝑖,
+𝑚𝑖𝑛𝑖 is the minimum value of channel 𝑖 and ˆ𝑥𝑖 is the symmetrically normalized 192x384 slice of
+spectral 𝑖.
+The main drawback of this methodology is the need to requantize the model. The quantization
+input symmetry was changed from symmetric to anti-symmetric because the DNN input now
+comes from the clipping process output (see Figure 11), where data values range from 0 to 0.149
+(the highest clipped value). Since Vitis AI only supports signed quantization, using scaled unsigned
+inputs reduces the dynamic range by half [59]. Therefore, it is essential to evaluate whether this
+requantization significantly degrades the model’s performance.
+It has been verified that the winning class changes for only about 2% of all pixels on average.
+Moreover, as shown in the comparison between Figures 13 and 14, these pixels are generally
+located at the boundaries between two or more classes or in regions where surrounding pixels
+are also misclassified. Therefore, the impact of the requantization process on overall performance
+degradation is negligible.
+(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
+Fig. 13. DPU output when the normalization is performed by software/explicitly.
+(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
+Fig. 14. DPU output when the normalization is performed by hardware/implicitly.
+6.3 Pruning and Its Influence on Deployment Efficiency
+Although pruning significantly reduces model size and complexity, accurately predicting the
+resulting inference speed-up is challenging due to factors such as preprocessing, quantization,
+external memory access, and the optimization of the processor’s logical and computational resources.
+Therefore, the quantized unpruned, one-time pruned, and two-times pruned models were evaluated
+in terms of frames per second (Figure 15a) and frames per second per watt (Figure 15b) when
+deployed across various DPU architecture versions. Smaller versions than the DPU B1600 were
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 21
+excluded, as their inference latency (highest at 74.023 ms for the low RAM, two-times pruned
+B1600) would exceed the latency of the preprocessing stage.
+B1600_lowRAM B1600
+B2304_lowRAM B2304
+B3136_lowRAM B3136
+B4096_lowRAM B4096
+1
+2
+3
+4
+5
+6
+7
+8Troughput improvement ratioNoPruning
+FirstIteration
+SecondIteration
+(a) Throughput ratio.
+B1600_lowRAM B1600
+B2304_lowRAM B2304
+B3136_lowRAM B3136
+B4096_lowRAM B4096
+1
+2
+3
+4
+5
+6
+7
+8Troughput/W improvement ratioNoPruning
+FirstIteration
+SecondIteration
+(b) Throughput/W ratio.
+Fig. 15. Assessment of the impact of pruning iterations and DPU choice on inference throughput (left) and
+throughput/W (right).
+As shown in Figure 15a, increasing the number of operations per cycle in the DPU correlates
+with improved throughput. Similarly, increasing the number of pruning iterations also leads to
+throughput gains. Regarding power consumption during inference (Figure 15b), the improvement
+ratio slightly decreases due to a small increase in power usage associated with higher operations per
+cycle. However, the difference in power consumption between the pruned models for a given DPU
+configuration is negligible The pruning methodology has improved latency by 2.86x (comparing
+the unpruned B4096 model and two-times pruned B4096 model), while the appropriate choice
+of DPU (B1600_lowRAM and B4096) has also contributed a 2.86x improvement. Together, these
+factors result in an overall throughput increase of 8.18× from the worst- to best-case scenario, as
+depicted in Figure 15a.
+6.4 Strategies for Bottleneck Reduction and Performance Optimization
+In the initial design, the application followed a single-stage pipeline: a new cube was generated
+only after the DPU completed inference on the previous one. The first column of Table 5 shows
+the time spent on each step, revealing that preprocessing latency is 2.5x higher than DPU latency,
+making preprocessing the primary bottleneck of the application.
+The first strategy to mitigate this bottleneck and improve throughput involved using one POSIX
+thread (pthread) for preprocessing and another for DNN inference. This parallelization leverages
+multicore processors, such as the quad-core ARM Cortex-A53, allowing each thread to run on a
+separate core. In this setup, synchronization mechanisms are necessary to manage shared resources,
+prevent race conditions, and ensure data integrity [63].
+To prevent the preprocessing thread from modifying the cube variable during DPU inference,
+several schemes were evaluated, including mutexes [63], alternating memory buffers, and dedicated
+buffers for each step. Considering the significant latency difference between the preprocessing and
+inference (see first column of Table 5), using separate buffers for each step was chosen to avoid
+the overhead introduced by mutexes. Consequently, the cube variable was modified only during
+the final preprocessing steps, allowing the DPU inference thread to process the previous cube
+uninterrupted.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+22 Gutiérrez-Zaballa et al.
+Table 5. Time taken (Averaged over 100 executions) to complete each of the steps of the one/two/three stage
+whole application execution (Time is in ms).
+Step name / Num. of stages 1 2 3
+Image loading 3.255 4.790 7.039
+Cropping and clipping 1.377 8.832 9.302
+Reflectance correction 19.337 25.789 37.224
+Demosaicing 9.197 9.851 18.164
+Spatial bilinear interpolation 12.015 12.904 15.409 (87.138)
+Cropping + BSQ to BIP 26.548 29.930 52.791
+Clipping + PN 5.697 (77.426) 5.568 (97.664) 12.309 (65.100)
+DPU Inference* 32.842a 61.581b 62.217b
+Longest task time 110.268 97.664 87.138
+aB4096 DPU, optimum config. b B3136 DPU, power efficient config.
+∗It contains cube transmission times.
+In the two-stage pipeline, preprocessing remained the longest task but was faster than the
+combined preprocessing and inference time in the single-stage pipeline, leading to improved
+throughput (see second column of Table 5). However, running preprocessing and inference in
+parallel caused each task to slow down individually due to shared resource contention between
+threads. The results revealed a load imbalance, indicating an uneven workload distribution across
+threads that limited overall performance gains.
+To further increase throughput, the preprocessing stage was split into two parts: from the
+start up to spatial bilinear interpolation, and from the final cropping to PN. his created three
+concurrent threads: a CPU cube preprocessing thread, a CPU format-adapting thread, and a DPU
+inference thread. Synchronization is managed via condition variables, where the preprocessing
+thread signals the format-adapting thread to start, which then signals the DPU inference thread.
+To prevent race conditions, two separate buffers are used for the outputs of both the preprocessing
+and format-adapting threads.
+Since the first two stages run on the ARM processor, they share the 32 128-bit SIMD/floating-point
+registers. Introducing an additional thread reduces the available resources per thread, causing the
+total latency of these stages to be higher than in the single-stage pipeline. However, throughput
+improves because previously sequential operations now run in parallel. Results shown in the third
+column of Table 5 demonstrate a 15% (17 ms) reduction in the latency of the longest task.
+6.5 Comprehensive Selection of Deep Processing Unit
+Regardless of whether one, two, or three stages are used, preprocessing remains the system bot-
+tleneck, limiting overall throughput. Therefore, selecting the DPU configuration with the lowest
+latency is not always optimal, as it demands more hardware resources and higher power consump-
+tion. Moreover, because the input image size is 192x384x25 bytes (1.8 MB) and skip connections
+increase the size of deeper layer feature maps, not all activation maps fit in on-chip BRAM. In-
+creasing the number of memory banks for activations from 16 (2 MB) to 24 (3 MB) yields a 4 ms
+performance improvement (see Table 6, columns two and three).
+It is important to note that the B2304 configuration does not meet the inference latency require-
+ments needed to prevent the DPU from becoming the bottleneck when data synchronization tasks
+are included. As a result, the final DPU configuration uses a B3136 core with low RAM usage,
+achieving 10.54 FPS for the entire application pipeline. As shown in Table 4, this configuration
+reduces resource usage by 20.28% fewer DSPs, 16.67% fewer URAMs, 3.38% fewer registers, and
+16.69% fewer flip-flops.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 23
+Table 6. Computational profiling (Averaged over 100 executions) of three stage whole application with the
+DPU configurations of Table 4 (Time is in ms).
+Parameter / DPU name B4096 B3136 B3136 B2304
+Cube preprocessing 89.786 88.931 87.138 85.554
+Format adapting 67.695 66.261 65.100 65.740
+DPU inference 19.241 38.865 42.959 54.897
+Avg. bandwidth (MB/s) 1759.738 882.568 798.328 625.645
+Power consumption on the K26 SOM was monitored using the platformstats application, which
+interfaces with the INA260 current sensor via I2C. The measured power consumption was 2.44W
+when the PL is powered down in idle state, 3.2W when the PL was powered up but not programmed,
+and 3.52W when the PL was powered up and programmed but not running. During application
+execution, average power consumption was 5.2W, almost 2W lower than previous results.
+7 CONCLUSIONS
+While the use of DNNs for HSI has been intensively investigated in recent years, their application
+to ADS and autonomous navigation remains particularly challenging. Integrating DNNs with the
+rich spectral information from snapshot HSI cameras significantly enhances intelligent vision
+capabilities by addressing metamerism issues inherent in traditional RGB systems. This paper
+addresses the main challenges in developing embedded processing architectures suited for deploying
+HSI-based intelligent vision systems in ADS. It is demonstrated that acquiring richer and more
+accurate spectral data with modern snapshot hyperspectral sensors enables the use of aggressive
+compression techniques without sacrificing performance.
+Snapshot filter-on-chip HSI technology, capable of capturing hyperspectral data at video rates,
+requires a sophisticated processing pipeline to convert raw 2D images into 3D data cubes compatible
+with DNN input. Although often overlooked, this preprocessing stage is a critical bottleneck,
+as confirmed in this design. To address this, a refined hardware/software co-design approach
+is proposed that balances task distribution, identifies inefficiencies, and enhances the overall
+performance on FPGA-based SoC platforms.
+For cube preprocessing, computational efficiency was maximized by combining thread-level and
+data-level parallelism on the quad-core ARM Cortex-A53 processor. The memory representation
+analysis considers constraints such as the 2D input format, DPU requirements, and the order and
+nature of preprocessing operations, which favour BSQ format initially and BIP format later for DPU
+compatibility. This approach avoids performance penalties from premature format conversion.
+Regarding compression techniques, an iterative pruning method based on static and dynamic
+analysis demonstrated a two-order-of-magnitude reduction in parameters and a one-order-of-
+magnitude decrease in OPS, achieving results comparable to SotA models in RGB benchmarks
+but with significantly lower computational complexity. A layer-by-layer comparison between
+pre-training and post-training pruning highlights opportunities to combine insights from each
+stage to develop more effective pruning techniques for segmentation, an area that remains under
+active development. The combined impact of pruning and DPU architecture selection was evaluated
+in terms of power consumption (W), logical resource usage (DSP units, LUTs), memory footprint
+(MB), model complexity (OPS), and throughput (FPS).
+To optimize the system pipeline, preprocessing was identified as the primary bottleneck. The
+system was therefore restructured into three concurrently executing stages: two preprocessing
+stages and one inference stage. This reorganization, together with pruning-based complexity
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+24 Gutiérrez-Zaballa et al.
+reduction, enabled the selection of a more efficient DPU architecture without compromising model
+performance.
+In conclusion, this work demonstrates that applying a hardware/software co-design approach and
+targeted optimization techniques enables the deployment of an HSI-based embedded processing
+architecture that enhances the robustness of intelligent vision systems for ADS. Nevertheless,
+further acceleration of raw image preprocessing is required, either through specialized hardware
+or by integrating this stage into the DNN feature extraction module. Additionally, obtaining low-
+complexity compressed models will facilitate exploration of stream or dataflow-type accelerators,
+where each neural network layer is mapped as a distinct hardware unit and interconnected in a
+stream-like manner to increase inference throughput.
+8 ACKNOWLEDGMENTS
+This work was partially supported by the University of the Basque Country (UPV/EHU) under
+grant GIU21/007, by the Basque Government under grant PRE_2024_2_0154 and by Union Europea-
+NextGenerationEU through the Cátedras Chip program, SOC4SENSING TSI-069100-2023-0004.
+REFERENCES
+[1] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully Convolutional Networks for Semantic Segmentation. In
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), pages 3431–3440, 2015. doi:
+10.1109/CVPR.2015.7298965.
+[2] Yujian Mo, Yan Wu, Xinneng Yang, Feilin Liu, and Yujun Liao. Review the State-of-the-art Technologies of Semantic
+Segmentation Based on Deep Learning. Neurocomputing, 493:626–646, 2022. doi: 10.1016/j.neucom.2022.01.005.
+[3] Rong Cui, He Yu, Tingfa Xu, Xiaoxue Xing, Xiaorui Cao, Kang Yan, and Jiexi Chen. Deep Learning in Medical
+Hyperspectral Images: A Review. Sensors, 22(24):9790, 2022. doi: 10.3390/s22249790.
+[4] Anton Terentev, Viktor Dolzhenko, Alexander Fedotov, and Danila Eremenko. Current State of Hyperspectral Remote
+Sensing for Early Plant Disease Detection: A Review. Sensors, 22(3):757, 2022. doi: 10.3390/s22030757.
+[5] Gözde Özdoğan, Xiaohui Lin, and Da-Wen Sun. Rapid and Noninvasive Sensory Analyses of Food Products by
+Hyperspectral Imaging: Recent Application Developments. Trends in Food Science & Technology, 111:151–165, 2021.
+doi: 10.1016/j.tifs.2021.02.044.
+[6] David H Foster, Kinjiro Amano, Sérgio MC Nascimento, and Michael J Foster. Frequency of Metamerism in Natural
+Scenes. Journal of the Optical Society of America A, 23(10):2359–2372, 2006. doi: 10.1364/JOSAA.23.002359.
+[7] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M. Victoria Martínez, Unai Martinez-Corral, Óscar Mata-
+Carballeira, and Inés del Campo. On-chip Hyperspectral Image Segmentation With Fully Convolutional Networks For
+Scene Understanding in Autonomous Driving. Journal of Systems Architecture, 139:102878, 2023. ISSN 1383-7621. doi:
+10.1016/j.sysarc.2023.102878.
+[8] Nathaniel Hanson, Benjamin Pyatski, Samuel Hibbard, Charles DiMarzio, and Taşkın Padır. Hyper-Drive: Visible-Short
+Wave Infrared Hyperspectral Imaging Datasets for Robots in Unstructured Environments. In 2023 13th Workshop on
+Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages 1–5. IEEE, 2023. doi:
+10.1109/WHISPERS61460.2023.10430802.
+[9] Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. Point-Supervised Semantic Segmentation of Natural Scenes via
+Hyperspectral Imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops
+(CVPRW), pages 1357–1367, 2024. doi: 10.1109/CVPRW63382.2024.00143.
+[10] Bert Geelen, Carolina Blanch, Pilar Gonzalez, Nicolaas Tack, and Andy Lambrechts. A Tiny VIS-NIR Snapshot Multi-
+spectral Camera. In Georg von Freymann, Winston V. Schoenfeld, Raymond C. Rumpf, and Henry Helvajian, editors,
+Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VIII, volume 9374, page 937414. International
+Society for Optics and Photonics, SPIE, 2015. doi: 10.1117/12.2077583.
+[11] Kathleen Vunckx and Wouter Charle. Accurate Video-Rate Multi-Spectral Imaging Using IMEC Snapshot Sensors. In
+2021 11th Workshop on Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages
+1–7, 2021. doi: 10.1109/WHISPERS52202.2021.9483975.
+[12] Bert Geelen, Nicolaas Tack, and Andy Lambrechts. A Compact Snapshot Multispectral Imager with A Monolithically
+Integrated Per-pixel Filter Mosaic. In Georg von Freymann, Winston V. Schoenfeld, and Raymond C. Rumpf, editors,
+Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VII, volume 8974, page 89740L. International
+Society for Optics and Photonics, SPIE, 2014. doi: 10.1117/12.2037607.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 25
+[13] AMD-Xilinx. Kria K26 SOM: The Ideal Platform for Vision AI at the Edge. https://docs.xilinx.com/v/u/en-US/wp529-
+som-benchmarks, 2021.
+[14] AMD-Xilinx. Kria K26 SOM Data Sheet (DS987). https://docs.amd.com/r/en-US/ds987-k26-som/Overview, 2024.
+[15] ARM. Arm Cortex-A53 MPCore Processor Technical Reference Manual. https://developer.arm.com/documentation/
+ddi0500, 2018. Accessed: 2024-11-08.
+[16] Xilinx. DPUCZDX8G for Zynq UltraScale+ MPSoCs Product Guide (PG338). https://https://docs.xilinx.com/r/en-
+US/pg338-dpu?tocId=3xsG16y_QFTWvAJKHbisEw, 2024.
+[17] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M Victoria Martínez, and Unai Martinez-Corral. HSI-Drive
+v2.0: More Data for New Challenges in Scene Understanding for Autonomous Driving. In 2023 IEEE Symposium Series
+on Computational Intelligence (SSCI), pages 207–214. IEEE, 2023. doi: 10.1109/SSCI52147.2023.10371793.
+[18] Koldo Basterretxea, Jon Gutiérrez-Zaballa, Javier Echanobe, and María Victoria Martínez. Hsi-drive, 2023. URL
+https://doi.org/10.5281/zenodo.15686957.
+[19] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional Networks for Biomedical Image Segmenta-
+tion. In Medical Image Computing and Computer-assisted Intervention–MICCAI 2015: 18th International Conference,
+Munich, Germany, October 5-9, 2015, Proceedings, Part III 18, pages 234–241. Springer, 2015. doi: 10.1007/978-3-319-
+24574-4_28.
+[20] Christian Winkens, Florian Sattler, Veronika Adams, and Dietrich Paulus. HyKo: A Spectral Dataset for Scene
+Understanding. In Proceedings of the IEEE International Conference on Computer Vision Workshops (ICCVW), pages
+254–261, 2017. doi: 10.1109/ICCVW.2017.39.
+[21] Nick Theisen, Robin Bartsch, Dietrich Paulus, and Peer Neubert. HS3-Bench: A Benchmark and Strong Baseline for
+Hyperspectral Semantic Segmentation in Driving Scenarios. In 2024 IEEE/RSJ International Conference on Intelligent
+Robots and Systems (IROS), pages 5895–5901. IEEE, 2024. doi: 10.1109/IROS58592.2024.10801768.
+[22] Shaodi You, Erqi Huang, Shuaizhe Liang, Yongrong Zheng, Yunxiang Li, Fan Wang, Sen Lin, Qiu Shen, Xun Cao,
+Diming Zhang, et al. Hyperspectral City V1.0 Dataset and Benchmark. arXiv, 2019. doi: 10.48550/arXiv.1907.10270.
+[23] Yuxing Huang, Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. HSICityV2: Urban Scene Understanding via Hyper-
+spectral Images, Jul 2021.
+[24] Jiarou Lu, Huafeng Liu, Yazhou Yao, Shuyin Tao, Zhenming Tang, and Jianfeng Lu. Hsi Road: A Hyper Spectral Image
+Dataset for Road Segmentation. In 2020 IEEE International Conference on Multimedia and Expo (ICME), pages 1–6. IEEE,
+2020. doi: 10.1109/ICME46284.2020.9102890.
+[25] K. Basterretxea, V. Martínez, J. Echanobe, J. Gutiérrez–Zaballa, and I. Del Campo. HSI-Drive: A Dataset for the
+Research of Hyperspectral Image Processing Applied to Autonomous Driving Systems. In 2021 IEEE Intelligent Vehicles
+Symposium (IV), pages 866–873, 2021. doi: 10.1109/IV48863.2021.9575298.
+[26] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe Franke,
+Stefan Roth, and Bernt Schiele. The Cityscapes Dataset for Semantic Urban Scene Understanding. In Proceedings of the
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016. doi: 10.1109/CVPR.2016.350.
+[27] Fisher Yu, H
+
+---
+
+chitectural complexity. Since applying a stratified 5-fold cross-validation
+aims to verify the invariance of the model’s robustness to different partitions of the dataset, from
+now on, and without loss of generalization, the results provided will correspond to the fifth fold.
+Table 1. IoU for the 32-bit floating-point U-Net model (left) and Intern Image [31] model (right).
+U-Net Intern Image
+Class / Fold Fold 1 Fold 2 Fold 3 Fold 4 Fold 5 Mean Fold 1 Fold 2 Fold 3 Fold 4 Fold 5 Mean
+Road 97.32 97.12 97.97 97.41 97.84 97.53 97.54 96.80 97.70 97.57 97.97 97.51
+Marks 82.13 83.13 89.01 87.15 88.30 85.94 80.04 80.10 83.02 83.60 84.97 82.35
+Vegetation 95.53 93.58 95.97 95.99 94.15 95.04 95.60 92.08 94.87 96.10 95.34 94.80
+Sky 91.71 93.09 92.26 94.64 93.38 93.02 94.25 93.75 88.95 95.25 94.76 93.39
+Other 78.16 77.63 81.82 77.94 77.38 78.59 77.68 72.70 78.96 79.45 80.09 77.78
+Global 94.43 93.73 95.48 94.90 94.67 94.64 94.76 93.15 94.52 95.20 95.35 94.59
+Weighted 85.28 85.87 89.41 88.65 88.40 87.52 84.17 82.90 84.76 84.17 87.21 84.64
+4 COMPRESSION TECHNIQUES FOR DNNS IN CO-DESIGN ENVIRONMENTS
+Although the developed U-Net model is lighter than the most sophisticated segmentation models, it
+remains too heavy for deployment on embedded platforms when low-latency processing is required.
+Therefore, as is common practice, compression techniques must be applied to obtain an optimized
+model. In this section, a brief overview of the quantization scheme employed is provided, and then
+the focus is placed on the presented pruning strategy.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 9
+4.1 Post Training Quantization
+The quantization strategy employed to transform the model from high accuracy floating-point
+arithmetic to 8-bit integer operations is detailed in [53]. Briefly, a clipping of the input cube based
+on the data distribution of each of the 25 spectral channels is performed which allows to save
+3 integer bits and augment the precision of the binary representation of the fixed-point values
+accordingly. This ensures that 99.95% of the data are correctly represented.
+The customized quantization pipeline consists of the following stages: symmetric quantization
+for inputs, bias (both with Min-Max method) and weights (Min-MSE method) and asymmetric
+for activations (Min-MSE method too). Additional applied techniques have been BN folding (to
+fuse a 𝑐𝑜𝑛𝑣2𝐷 and a BN layer and reduce the number of parameters) and cross layer equalization,
+minimizing the difference in the magnitude of the elements in the same layer or tensor without
+having to perform the costly per-channel quantization. In addition to this, the quantization scheme
+has been homogeneous and uniform, the scale factor is restricted to be a power of two, and the
+quantization granularity is per-tensor. The comparative figures after quantization are summed
+up in Table 2 and show that there has been almost no degradation in the IoU after the custom
+quantization of the U-Net.
+Table 2. IoU of the U-Net models according to the data representation.
+Data representation Mparams GFLOPS Size (MB) Road Marks Vegetation Sky Other Global Weighted
+FP32 31.10 34.87 118.73 97.84 88.30 94.15 93.38 77.38 94.67 88.40
+INT8 31.10 34.87 29.66 97.65 87.99 93.46 92.38 76.57 94.27 87.82
+After the quantization of the model, its memory requirements have considerably decreased to a
+fourth of the initial one, but the number of GFLOPS to be performed per-inference has not been
+reduced. However, reducing the bit-width permits vectorization as INT8 MAC operations could be
+performed in parallel in some processors, taking advantage of SIMD (Single Instruction, Multiple
+Data) computing strategy (vector registers, Neon (ARM) [54] or DSP48E2 slices (AMD-Xilinx) [55]).
+In this regard, the acceleration is tightly coupled with how the data are read/stored from/to memory
+as this is usually the most time consuming operation. Therefore, in order to trim the number of
+FLOPS, the use of pruning methods has been investigated.
+4.2 Iterative Structured Pruning
+In a typical convolutional neural network for object detection, pruning a specific convolutional filter
+reduces the size of the output feature map, so only the weights and BN parameters corresponding to
+the pruned feature dimension need to be removed. However, modern DNNs for image segmentation,
+such as U-Net, include concatenation blocks that merge features extracted at different kernel sizes
+and depths. These concatenation layers, along with skip-connections linking encoder and decoder
+blocks, create dependencies between layers that make the pruning process more complex. Because
+of these skip-connections, pruning in U-Net requires careful handling of concatenation layers
+to ensure the architecture remains consistent. In contrast, other layers such as 2D max-pooling,
+dropout, and activation layers do not need explicit treatment.
+In the following, the proposed post-training iterative pruning strategy tailored for U-Net seg-
+mentation models that comprises both static and dynamic analyses is described. First, the static
+analysis focuses on the distribution of computational load and memory footprint across the DNN.
+The pruning objective is established by identifying the most computationally intensive operations
+and considering the application requirements. Subsequently, the dynamic analysis examines the
+model’s sensitivity to various pruning ratios (pr) of the chosen objective, allowing the identification
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+10 Gutiérrez-Zaballa et al.
+of layers that are most robust or over-parameterized. These two analyses form the foundation of
+the proposed iterative pruning method, which begins with the selection of an overall pr. This ratio
+must be determined while taking into account the flexibility of each layer, as explained further
+below.
+4.2.1 Static Analysis. The static analysis begins by evaluating the contribution of every layer in
+terms of FLOPS and number of parameters. In the reference U-Net architecture, the operations
+demanding the highest FLOPS are the 𝑐𝑜𝑛𝑣2𝐷 and the transposed 𝑐𝑜𝑛𝑣2𝐷 layers. In fact, other
+operations such as bias addition or BN account for only about 0.21% of the total computational
+load. Therefore, an accurate overall estimation can be obtained by focusing solely on these two
+convolution operations. Equation 1 represents the approximate number of FLOPS of the whole
+model
+𝐹 𝐿𝑂𝑃𝑆 ≈
+𝑛∑︁
+𝑗=0 𝐹 𝐿𝑂𝑃𝑆𝑐𝑜𝑛𝑣𝑗 =
+𝑛∑︁
+𝑗=0 𝑜ℎ 𝑗 · 𝑜𝑤𝑗 · 𝑜 𝑓𝑗 · 𝑘ℎ 𝑗 · 𝑘𝑤𝑗 · 𝑖𝑐 𝑗 · 2 · ( 1
+4 ) 𝑗 (1)
+where 𝑗 indicates the number of the 𝑐𝑜𝑛𝑣2𝐷 layer, 𝑜ℎ is the height of the output feature map, 𝑜𝑤
+is the width of the output feature map, 𝑜 𝑓 is the number of filters or depth of the output feature
+map, 𝑘ℎ is the height of the convolution kernel, 𝑘𝑤 is the width of the convolution kernel, 𝑖𝑐 is the
+number of input channels or depth of the 𝑐𝑜𝑛𝑣2𝐷 kernel and the factor 2 is necessary to account
+for the addition that have to be made during 𝑐𝑜𝑛𝑣2𝐷 operations (1 MAC = 2 FLOPS). The 1
+4 factor
+is only applied to transposed 𝑐𝑜𝑛𝑣2𝐷 as they have a stride of 2 in both directions.
+Figure 3a shows the number of FLOPS for each 𝑐𝑜𝑛𝑣2𝐷 layer in the model. It can be observed that
+the decoder branch requires roughly twice as many FLOPS as the encoder branch. Additionally, at
+each depth level, the second convolution block has an equal number of FLOPS in both the encoder
+and decoder branches.
+0 Decoder
+1
+20Number of GFLOPS10 9
+31Base
+Depth2345Encoder
+(a) Number of FLOPS.
+0 Decoder
+50
+10 6Number of parameters
+101Base
+Depth2345Encoder
+(b) Number of parameters.
+Fig. 3. U-Net computational complexity per 𝑐𝑜𝑛𝑣2𝐷 and per transposed 𝑐𝑜𝑛𝑣2𝐷 layers.
+The same reasoning applies to the calculation of the number of parameters, since non-convolutional
+layers represent only 0.08% of the total. The number of parameters in the 3x3 𝑐𝑜𝑛𝑣2𝐷 layers mainly
+depends on the number of filters and the spectral size, both of which increase with the network’s
+depth. Consequently, the layers with the highest number of parameters are located near the base of
+the U-Net. Equation 2 represents the approximate number of parameters of the whole model
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 11
+𝑝𝑎𝑟𝑎𝑚𝑠 ≈
+𝑛∑︁
+𝑗=0 𝑝𝑎𝑟𝑎𝑚𝑠𝑐𝑜𝑛𝑣𝑗 =
+𝑛∑︁
+𝑗=0 𝑜 𝑓𝑗 · 𝑘ℎ 𝑗 · 𝑘𝑤𝑗 · 𝑖𝑐 𝑗 (2)
+where 𝑗 is the subscript indicating the number of the convolution layer 𝑜 𝑓 is the number of filters
+or depth of the output feature map, 𝑘ℎ is the height of the convolution kernel, 𝑘𝑤 is the width of
+the convolution kernel, 𝑖𝑐 is the number of input channels or depth of the convolution kernel.
+Based on Figures 3a and 3b and depending on the specific optimization objective used for pruning
+(whether reducing parameters, FLOPS, a combination of both, or balancing memory accesses against
+computations [56]) it can be determined where the pruning algorithm should focus its efforts.
+4.2.2 Dynamic Analysis. The basis of the dynamic analysis is a sensitivity analysis, which is a
+concept that dates back to the optimal brain damage method proposed by [57]. It is also used in
+[58], one of the first papers that focuses on structured pruning in convolutional networks.
+Building on the static analysis presented in Section 4.2.1, the sensitivity analysis is conducted
+by defining FLOPS reduction as the pruning objective and using the smallest L1 norm as the
+pruning criterion to select which channels to remove within each layer. Each layer is then pruned
+incrementally, applying a pr from 0 to 0.9 in steps of 0.1, while the rest of the model is kept frozen.
+The final 𝑐𝑜𝑛𝑣2𝐷 layer is excluded from pruning since its number of filters must match the number
+of segmentation classes. The pruned model is then evaluated according to a given metric such as
+the IoU. The tool used for both the sensitivity analysis and the iterative pruning process is the VAI
+Optimizer 3.5 from AMD-Xilinx, which was made open source in VAI 3.5 [59].cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2cnv_14
+0
+25cnv_13
+50cnv_tr0
+75Global IoUcnv_10
+100
+Pruning ratiocnv_80.3cnv_60.6cnv_4cnv_20.9cnv
+(a) Global IoU.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Road IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(b) Road IoU.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75RoadMarks IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(c) Marks IoU.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Vegetation IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(d) Vegetation IoU.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Sky IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(e) Sky IoU.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Others IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(f) Others IoU.
+Fig. 4. Class IoU-based sensitivity analysis on the U-Net 𝑐𝑜𝑛𝑣2𝐷 (cnv) and transposed 𝑐𝑜𝑛𝑣2𝐷 (cnv_tr) layers.
+Figures 4a to 4f provide further insight into how the segmentation performance for specific
+classes is affected by pruning certain filters. For example, the Road class is generally the most
+robust; however, for some layers, applying aggressive pruning leads to catastrophic segmentation
+failure. The Marks class is particularly sensitive to pruning in the initial layers. For the Vegetation
+class, there are significant differences between the most aggressive consecutive prs, but overall, its
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+12 Gutiérrez-Zaballa et al.
+robustness remains high. The Sky class shows a particular degradation when the second convolution
+is pruned, while the behaviour of the Other class resembles that of Marks. This could be related
+to the fact that the first two convolution layers focus on the borders and shapes of elements in
+the images, which are more present in these two classes. To maintain equal weighting across all
+classes, wIoU is used as the pruning evaluation metric.
+4.2.3 Iterative Pruning. The success of the iterative pruning methodology (Algorithm 1), is tightly
+coupled with a proper overall pr initialisation, which indicates the desired level of complexity
+reduction. That ratio sets the target FLOPS, a parameter that is fed to the constrained binary search
+algorithm. The recursive algorithm determines an optimal, layer-specific pruning scheme (that is,
+the individual pr for each DNN layer) to achieve the desired reduction in FLOPs. Simultaneously,
+the process evaluates prunable groups of DNN layers to ensure that pruning does not lead to
+excessive degradation in performance, with those layers exceeding the user-defined threshold
+being excluded from the pruning process. This scheme safeguards the integrity of the model while
+enabling efficient optimization.
+The layer-specific pruning scheme assessment involves taking the following considerations into
+account: sensitivity of selected layer/ratio pairs, number of locked layers (layers with a value of 0.9 in
+the pruning scheme) and, optionally, assessment of the IoU after finetuning. Firstly, if the proposed
+pr for a given layer is related to a low IoU, it is indicative of an IoU degradation for the whole
+model after finishing the process. Secondly, if the number of locked layers is high, it is indicative of
+a possible IoU degradation but, above all, of an IoU degradation in the following iterations. The fact
+of being locked suggests that those layers are robust and that they could have been further pruned
+instead of the non-locked less robust layers. Finally, optionally, although models from different
+schemes could be fine-tuned and their IoU scores compared, the main goal of iterative pruning
+is not only to improve the present results but to prepare the model for further pruning in future
+iterations. Once the ideal layer-specific pruning scheme has been selected, finetuning process is
+performed so as to, at least, partially recover the lost IoU. From there on, there are two options:
+either increase the initial pr (if the previous approach is deemed conservative) or continue with the
+following iterations, for which the entire process must be repeated, selecting a new initial pr.
+Algorithm 1 Part 1: Do analyses.
+1: for num_iters = 1 to N do
+2: Static → Objective = FLOPS
+3: Dynamic → Overall pr = 0.5
+4: while pr ≠ Í(pr_spec) do
+5: pr_spec(FLOPS, 0.5)
+6: end while
+7: Go to Part 2
+8: end for
+Algorithm 1 Part 2: Check last iter.
+1: if num_iters = N then
+2: if ΔwIoU < 1 then
+3: Finetune
+4: else
+5: Go to Part 1 (line 3)
+6: end if
+7: else
+8: Go to Part 3
+9: end if
+Algorithm 1 Part 3: Other iters.
+1: if layer ΔwIoU < 0.25 and
+lock_layers < 25% and ΔwIoU < 1
+then
+2: Finetune
+3: Go to Part 1 (line 2)
+4: else
+5: Go to Part 1 (line 3)
+6: end if
+Algorithm 1. Pseudocode of the Iterative pruning methodology. These values are valid for this specific case
+but may be adjusted depending on application constraints.
+The outcome of applying this methodology to this case study can be seen in Figure 5a, which
+depicts the sensitivity analysis of the non-compressed U-Net utilizing wIoU as the verification
+metric. The coloured bars illustrate the layer-specific pruning scheme to achieve overall prs of 0.5
+(blue) and 0.6 (purple) in terms of FLOPS. The grey colour represents the layers that are pruned
+equally across both pruning schemes.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 13
+For an initial pr of 0.5, the DNN has been compressed from 34.87G to 16.82G FLOPS and from
+31.10 M to 2.48 M parameters (see first row of Table 3). The huge decrease in the number of
+parameters can be explained by combining Figures 3b and 5a. The most pruned layers are the ones
+that contain the greatest amount of parameters. The U-Net was then finetuned for a total of 60
+epochs with a learning rate of 10−6 and quantized as described in Subsection 4.1. The test results,
+where the pruned model unexpectedly outperforms the non-pruned model (see first row of Table
+2), suggest that further compression could be possible without affecting performance. To continue
+with the pruning process, a higher overall pr to the base model or a small second pr to the pruned
+model could be applied.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Weighted IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+Same
+0.5
+0.6
+(a) Non-pruned model.cnv_21cnv_tr_4cnv_18
+Layer namecnv_17cnv_tr_2
+0
+25cnv_14
+50cnv_130
+75Weighted IoUcnv_tr
+100cnv_10
+Pruning ratio0.3cnv_8cnv_60.6cnv_4cnv_20.9cnv
+(b) One-time 0.5 pruned model.
+Fig. 5. Weighted IoU-based sensitivity analyses of different U-Net 𝑐𝑜𝑛𝑣2𝐷 layers. Homogeneously coloured
+bars are part of the same layer-specific pruning scheme to achieve a certain overall pr.
+In the first case, a higher overall pr value is applied, which causes more layers to lock (see Figure
+5a). Those layers are robust and computationally burdensome, so it could be interesting not to have
+them locked. Nevertheless, for the sake of comparison, the base model was also pruned with 0.6,
+0.7 and 0.8 prs and finetuned afterwards. The results of the 0.6-pruned and 0.7-pruned models (see
+second and third row in Table 3) are satisfactory, while the metrics for the 0.8-pruned model (see
+fourth row in Table 3) greatly degraded, especially when looking at the most under-represented
+classes, which mostly affect wIoU.
+Table 3. IoU of the 8-bit quantized U-Net models according to pr.
+Pruning ratio Mparams GFLOPSa Size (MB) Road Marks Vegetation Sky Other Global Weighted
+0.5 2.48 16.82 2.37 97.87 88.37 93.82 92.74 78.81 94.71 88.77
+0.6 1.62 13.84 1.54 97.87 87.97 93.67 92.44 78.32 94.61 88.41
+0.7 1.01 10.53 0.96 97.77 87.99 93.74 92.93 77.48 94.51 88.44
+0.8 0.59 6.97 0.56 96.56 80.96 93.25 88.69 75.39 93.04 83.51
+0.75 (0.5 & 0.5) 0.32 8.49 0.31 97.72 88.15 93.85 92.45 77.38 94.47 88.37
+0.8 (0.5 & 0.6) 0.26 6.62 0.25 93.39 85.92 92.48 90.83 62.42 89.94 84.43
+0b 7.76 31.76c 7.41 96.93 80.28 94.04 91.54 73.48 93.38 83.45
+a Input size of 192x384. b This row corresponds to the floating-point model of depth 4 used in [53].
+cAs a consequence of the model depth, the input was adjusted to 208x400 pixels.
+To address this issue, a class-aware pruning strategy could be employed. This could involve
+focusing on the sensitivity analyses of the specific classes (see Figure 4) and adjusting the pr of
+critical layers accordingly. Alternatively, a modified wIoU metric could be introduced, assigning
+higher importance to sensitive classes to preserve their predictive performance. However, despite
+the inherent parallelism and overparameterization of DNNs, they are not entirely immune to its
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+14 Gutiérrez-Zaballa et al.
+effects. An aggressive pruning ratio of 0.8 may still hinder the DNN’s ability to preserve essential
+feature representations of those classes, regardless of the post-training pruning methodology
+applied.
+In the second case, a second iteration is performed, requiring the process to be repeated and
+a new wIoU-based sensitivity analysis to be conducted (see Figure 5b). The initial pr is selected
+based on previous results. A second pr of 0.4 resulted in an overall pr of 0.7, yielding good results.
+A second pr of 0.6 gave an overall pr of 0.8, which did not produce favourable outcomes. Therefore,
+a second pr of 0.5 is chosen, leading to an overall pr of 0.75. After finetuning the model, the loss in
+wIoU compared to the original and the 0.5-pruned models is below 0.5 IoU points (see fifth row in
+Table 3) while a reduction of 75% in OPS and of 99% in parameters is achieved. All in all, the applied
+model optimization methodology (combining post-training iterative pruning and quantization)
+has produced an architecture that maintains system accuracy while reducing model complexity by
+orders of magnitude, as shown in Figure 6.
+It is also important to note that, as expected, training shallower dense U-Net models (depths 2, 3,
+and 4) with fewer initial convolutional filters (8, 16, 32) resulted in considerably worse performance
+(about 5 IoU points lower) compared to pruning trained large sparse models (see seventh row in
+Table 3). In fact, that poor result is very similar to one of the worst model of the one-time pruning
+process (ratio of 0.8), but with 13x parameters and 4x GFLOPS.
+Params. (M) OPS (GFL, GFL, G) Size (MB)
+10-1
+100
+101
+102
+103
+Intern Image U-Net compressed U-Net
+Fig. 6. Number of parameters (left), operations (centre) and size (right) comparison among Intern Image (blue
+bar), U-Net (red bar) and the compressed U-Net (brown bar).
+4.2.4 Pruning Efficiency: Iterative vs. Non-Iterative Approaches. This section compares the pruning
+efficiency at a global pruning ratio of 0.8, evaluating both iterative pruning (0.5 & 0.6 steps) and
+one-time pruning (0.8) methods, along with their resulting layer-specific pruning schemes.
+Regarding the comparison of results, although the gIoU is approximately 3 points lower for the
+iterative pruning approach, the wIoU (the primary focus) is nearly 1 point higher (see the fourth
+and sixth rows of Table 3). Moreover, the iterative pruning process allows previously locked layers
+to be further pruned, resulting in a model with roughly half the number of parameters compared
+to the non-iterative approach. Despite this difference in parameters, the overall FLOPS remain very
+similar due to the same overall pruning ratio.
+As for the layer-specific pruning scheme, the purple and yellow lines in Figure 7 represent the
+resultant pr for each layer for the one-time and iterative pruning approaches. It can be seen how
+the iterative pruning method allows for a more flexible pruning outcome as the number of locked
+layers is kept at 8 matching the count from the first iteration (indicated by the blue line in Figure 7)
+while the number increases to 12 for the one-time pruning. In fact, those 8 layers have now been
+pruned again with a ratio of 0.9 (overall pr of 0.99).
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 15
+cnv
+cnv_1
+cnv_2
+cnv_3
+cnv_4
+cnv_5
+cnv_6
+cnv_7
+cnv_8
+cnv_9
+cnv_10
+cnv_11
+cnv_tr
+cnv_12
+cnv_13
+cnv_tr_1
+cnv_14
+cnv_15
+cnv_tr_2
+cnv_16
+cnv_17
+cnv_tr_3
+cnv_18
+cnv_19
+cnv_tr_4
+cnv_20
+cnv_21
+cnv_22
+Layer name
+0
+0.2
+0.4
+0.6
+0.8
+1Overall pruning ratio
+0.5 0.5, 0.5 0.5, 0.6 0.8
+Fig. 7. Comparison of the final pr of: 0.5 (blue), 0.5 & 0.5 (red), 0.5 & 0.6 (yellow) and 0.8 (purple) approaches.
+This trend also holds when applying a second pr of 0.5 (red line in Figure 7). Comparing the red
+and yellow lines in Figure 7 reveals which pruned layers caused the severe degradation in results,
+despite the overall prs are quite similar (0.75 and 0.8 respectively). The pr of the central area is
+almost the same (from layers 𝑐𝑛𝑣_6 to 𝑐𝑛𝑣_𝑡𝑟 _2) while the first group of layers and the last ones,
+the ones that are usually less robust, are pruned differently. Expectedly, the yellow lines are never
+below the red lines.
+4.2.5 Pruning Timing: Pre-training vs. Post-training Approach. As detailed in Section 2.3, previous
+studies [47, 48] have explored pre-training pruning for semantic segmentation. Although the
+reported results are not particularly encouraging, pre-training pruning was also investigated to
+cover a broader range of approaches. However, since both reported methods rely on ImageNet-
+pretrained networks and the aim was to explore pruning ratios beyond trivial levels, these methods
+were not adopted directly. Instead, the previously mentioned initialization strategy was retained,
+and the same pruning criteria were applied, exploring overall pruning ratios of [0.6, 0.7, and 0.8].
+This resulted in a reduction of at least 95% in the number of parameters and 60% in FLOPS, which
+is considered significant. However, this model simplification did not lead to the expected reduction
+in training time (from 8 hours to 6.5 hours), although other factors, such as hardware memory
+constraints or data size, could have contributed to this outcome.
+Figure 8 shows the pruning schemes at an overall pruning ratio of 0.6, revealing significant
+WIoU variation across initializations with the pre-training pruning method. Initializations with
+lower WIoU (black and blue lines) tend to over-prune layers 𝑐𝑛𝑣_4 and 𝑐𝑛𝑣_5 while under-pruning
+𝑐𝑛𝑣_16 and 𝑐𝑛𝑣_17. In contrast, the best-performing initialization (light brown line) prunes 𝑐𝑛𝑣_4
+and 𝑐𝑛𝑣_5 less aggressively while applying heavier pruning to 𝑐𝑛𝑣_16 and 𝑐𝑛𝑣_17, aligning with
+trends observed in post-training pruning (Figure 7 and the orange line in Figure 8) and with modern
+architectural architectures with complex encoders and lightweight decoders [60].
+cnv
+cnv_1
+cnv_2
+cnv_3
+cnv_4
+cnv_5
+cnv_6
+cnv_7
+cnv_8
+cnv_9
+cnv_10
+cnv_11
+cnv_tr
+cnv_12
+cnv_13
+cnv_tr_1
+cnv_14
+cnv_15
+cnv_tr_2
+cnv_16
+cnv_17
+cnv_tr_3
+cnv_18
+cnv_19
+cnv_tr_4
+cnv_20
+cnv_21
+cnv_22
+Layer name
+0
+0.2
+0.4
+0.6
+0.8
+1Overall Pruning Ratio
+Pre 1 (86.06) Pre 2 (85.58) Pre 3 (88.04) Post (88.41)
+Fig. 8. Comparison of the pruning schemes of the pre-training approach (black, blue and light brown) and
+the post-training approach (orange) for a 0.6 overall pruning ratio.
+This behaviour is also influenced by the model’s structure, where the decoder requires more
+FLOPS than the encoder (Figure 3a). In the post-training scheme, several pruning peaks align
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+16 Gutiérrez-Zaballa et al.
+with the transposed convolution layers responsible for upsampling decoder activations, indicating
+increased reliance on encoder information. Additionally, the minimal pruning of layers 𝑐𝑛𝑣_7 and
+𝑐𝑛𝑣_14 reflects their critical role in skip connections, which directly transmit features from the
+encoder to the decoder.
+A key distinction between the pre-training and post-training pruning schemes is the flatter
+pruning distribution observed in the pre-training case. In particular, layers 𝑐𝑛𝑣_6, 𝑐𝑛𝑣_7, 𝑐𝑛𝑣_14,
+and 𝑐𝑛𝑣_15 are pruned much more aggressively under pre-training pruning. Such pronounced
+variations in pruning across layers are more likely to hinder feature extraction and, consequently,
+the segmentation accuracy.
+Figure 9 shows the pruning schemes at a pruning ratio of 0.7, which exhibit the highest similarity
+and lowest variance across initializations. In the pre-training case, the pruning distribution remains
+relatively flat around the base of the model, with heavier pruning concentrated in the decoder,
+particularly at layers 𝑐𝑛𝑣_𝑡𝑟 _3 and 𝑐𝑛𝑣_𝑡𝑟 _4. Likewise, in the post-training scheme, the decoder
+layers show the most significant pruning increase compared to the 0.6 ratio case.
+cnv
+cnv_1
+cnv_2
+cnv_3
+cnv_4
+cnv_5
+cnv_6
+cnv_7
+cnv_8
+cnv_9
+cnv_10
+cnv_11
+cnv_tr
+cnv_12
+cnv_13
+cnv_tr_1
+cnv_14
+cnv_15
+cnv_tr_2
+cnv_16
+cnv_17
+cnv_tr_3
+cnv_18
+cnv_19
+cnv_tr_4
+cnv_20
+cnv_21
+cnv_22
+Layer name
+0
+0.2
+0.4
+0.6
+0.8
+1Overall Pruning Ratio
+Pre 1 (87.24) Pre 2 (87.91) Pre 3 (87.00) Post (88.44)
+Fig. 9. Comparison of the pruning schemes of the pre-training approach (black, blue and light brown) and
+the post-training approach (orange) for a 0.7 overall pruning ratio.
+Finally, Figure 10 illustrates the pruning schemes at a 0.8 pruning ratio, again showing signifi-
+cant differences across initializations and the highest variability in WIoU outcomes. As observed
+previously, initializations (blue line) that apply more aggressive pruning to both the encoder (𝑐𝑛𝑣_2
+and 𝑐𝑛𝑣_3) and the decoder (𝑐𝑛𝑣_18 and 𝑐𝑛𝑣_19) tend to result in lower WIoU scores compared to
+more balanced pruning strategies, such as the ones represented by the black and light brown lines.cnvcnv_1cnv_2cnv_3cnv_4cnv_5cnv_6cnv_7cnv_8cnv_9cnv_10cnv_11cnv_trcnv_12cnv_13cnv_tr_1cnv_14cnv_15cnv_tr_2cnv_16cnv_17cnv_tr_3cnv_18cnv_19cnv_tr_4cnv_20cnv_21cnv_22
+Layer name
+0
+0.2
+0.4
+0.6
+0.8
+1Overall Pruning Ratio
+Pre 1 (87.38) Pre 2 (84.03) Pre 3 (85.92) Post (84.43)
+Fig. 10. Comparison of the pruning schemes of the pre-training approach (black, blue and light brown) and
+the post-training approach (orange) for a 0.8 overall pruning ratio.
+Despite the increased overall pruning ratio, the post-training pruning strategy tends to preserve
+certain internal layers (𝑐𝑛𝑣_7, 𝑐𝑛𝑣_14, 𝑐𝑛𝑣_15, and 𝑐𝑛𝑣_16) while applying more aggressive pruning
+to the outer layers (𝑐𝑛𝑣_18, 𝑐𝑛𝑣_19, 𝑐𝑛𝑣_20, and 𝑐𝑛𝑣_21), leading to performance degradation.
+Notably, this is the only configuration where pre-training pruning outperforms post-training
+pruning (in two initializations). However, this result is not entirely unexpected, given that, despite
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 17
+the high pruning ratio, the pre-trained pruned models still retain 0.41 M and 0.38 M parameters,
+respectively, compared to 0.26 M parameters in the post-training pruned model (Table 3).
+In conclusion, both pre-training and post-training pruning approaches have been comprehen-
+sively evaluated in terms of training time and WIoU. The iterative post-training pruning method
+consistently outperformed pre-training pruning. In the pre-training approach, the highest WIoU
+scores were 88.04 at a pruning ratio of 0.6, 87.91 at 0.7, and 87.38 at 0.8, all below the results of the
+iterative post-training method (88.37 at 0.75) and the original unpruned network (88.40) Notably,
+for pruning ratios of 0.6 and 0.7, pre-training pruning achieved lower scores than post-training
+pruning, despite the latter not being applied iteratively. Only at a 0.8 pruning ratio did pre-training
+pruning outperform the iterative method in two of three initializations, likely due to the relatively
+high number of parameters retained in those models.
+These results suggest tha
+
+---
+
+aofeng Chen, Xin Wang, Wenqi Xian, Yingying Chen, Fangchen Liu, Vashisht Madhavan, and Trevor Darrell.
+BDD100K: ADiverse Driving Dataset for Heterogeneous Multitask Learning. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition (CVPR), pages 2636–2645, 2020. doi: 10.1109/CVPR42600.2020.00271.
+[28] Gabriel J Brostow, Julien Fauqueur, and Roberto Cipolla. Semantic Object Classes in Video: A High-definition Ground
+Truth Database. Pattern Recognition Letters, 30(2):88–97, 2009. doi: 10.1016/j.patrec.2008.04.005.
+[29] Gerhard Neuhold, Tobias Ollmann, Samuel Rota Bulo, and Peter Kontschieder. The Mapillary Vistas Dataset for
+Semantic Understanding of Street Scenes. In Proceedings of the IEEE International Conference on Computer Vision
+(ICCV), pages 4990–4999, 2017. doi: 10.1109/ICCV.2017.534.
+[30] Xinyu Huang, Xinjing Cheng, Qichuan Geng, Binbin Cao, Dingfu Zhou, Peng Wang, Yuanqing Lin, and Ruigang Yang.
+The ApolloScape Dataset for Autonomous Driving. In Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition (CVPR), pages 954–960, 2018. doi: 10.1109/CVPRW.2018.00141.
+[31] Wenhai Wang, Jifeng Dai, Zhe Chen, Zhenhang Huang, Zhiqi Li, Xizhou Zhu, Xiaowei Hu, Tong Lu, Lewei Lu,
+Hongsheng Li, et al. Internimage: Exploring Large-scale Vision Foundation Models with Deformable Convolutions. In
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pages 14408–14419, 2023.
+doi: 10.1109/CVPR52729.2023.01385.
+[32] Cityscapes Dataset. Cityscapes Dataset Benchmarks, 2024. URL https://www.cityscapes-dataset.com/benchmarks/.
+Accessed: September 16, 2024.
+[33] Christoph Hümmer, Manuel Schwonberg, Liangwei Zhong, Hu Cao, Alois Knoll, and Hanno Gottschalk. Strong but
+simple: A Baseline for Domain Generalized Dense Perception by CLIP-based Transfer Learning. arXiv, 2023. doi:
+10.48550/arXiv.2312.02021.
+[34] Michael Zhu and Suyog Gupta. To Prune, or Not to Prune: Exploring the Efficacy of Pruning for Model Compression.
+arXiv, 2017. doi: 10.48550/arXiv.1710.01878.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+26 Gutiérrez-Zaballa et al.
+[35] Mingwen Shao, Junhui Dai, Jiandong Kuang, and Deyu Meng. A Dynamic CNN Pruning Method Based on Matrix
+Similarity. Signal, Image and Video Processing, 15:381–389, 2021. doi: 10.1007/s11760-020-01760-x.
+[36] Pavlo Molchanov, Arun Mallya, Stephen Tyree, Iuri Frosio, and Jan Kautz. Importance Estimation for Neural Network
+Pruning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pages 11264–
+11272, 2019. doi: 10.1109/CVPR.2019.01152.
+[37] Elias Frantar and Dan Alistarh. Optimal Brain Compression: A Framework for Accurate Post-Training Quantization
+and Pruning. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Advances in Neural
+Information Processing Systems, volume 35, pages 4475–4488. Curran Associates, Inc., 2022.
+[38] Woosuk Kwon, Sehoon Kim, Michael W Mahoney, Joseph Hassoun, Kurt Keutzer, and Amir Gholami. A Fast Post-
+Training Pruning Framework for Transformers. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh,
+editors, Advances in Neural Information Processing Systems, volume 35, pages 24101–24116. Curran Associates, Inc.,
+2022.
+[39] Yingtao Zhang, Haoli Bai, Haokun Lin, Jialin Zhao, Lu Hou, and Carlo Vittorio Cannistraci. Plug-and-play: An
+Efficient Post-training Pruning Method for Large Language Models. In The Twelfth International Conference on Learning
+Representations, 2024.
+[40] Jonathan Frankle and Michael Carbin. The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks.
+arXiv, 2018. doi: 10.48550/arXiv.1803.03635.
+[41] Zhuang Liu, Mingjie Sun, Tinghui Zhou, Gao Huang, and Trevor Darrell. Rethinking the Value of Network Pruning.
+arXiv, 2018. doi: 10.48550/arXiv.1810.05270.
+[42] Hattie Zhou, Janice Lan, Rosanne Liu, and Jason Yosinski. Deconstructing Lottery Tickets: Zeros, Signs, and the
+Supermask. Advances in Neural Information Processing Systems, 32, 2019.
+[43] Vivek Ramanujan, Mitchell Wortsman, Aniruddha Kembhavi, Ali Farhadi, and Mohammad Rastegari. What’s Hidden
+in A Randomly Weighted Neural Network? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 11893–11902, 2020. doi: 10.1109/CVPR42600.2020.01191.
+[44] Eran Malach, Gilad Yehudai, Shai Shalev-Schwartz, and Ohad Shamir. Proving the Lottery Ticket Hypothesis: Pruning
+is All You Need. In International Conference on Machine Learning, pages 6682–6691. PMLR, 2020.
+[45] Kehan Zhu, Fuyi Hu, Yuanbing Ding, Wei Zhou, and Ruxin Wang. A Comprehensive Review of Network Pruning
+Based on Pruning Granularity and Pruning Time Perspectives. Neurocomputing, page 129382, 2025. doi: 10.1016/j.
+neucom.2025.129382.
+[46] Hongrong Cheng, Miao Zhang, and Javen Qinfeng Shi. A Survey on Deep Neural Network Pruning: Taxonomy,
+Comparison, Analysis, and Recommendations. IEEE Transactions on Pattern Analysis and Machine Intelligence, 2024.
+doi: 10.1109/TPAMI.2024.3447085.
+[47] Konstantin Ditschuneit and Johannes S Otterbach. Auto-compressing Subset Pruning for Semantic Image Segmentation.
+In DAGM German Conference on Pattern Recognition, pages 20–35. Springer, 2022. doi: 10.1007/978-3-031-16788-1_2.
+[48] Leonardo Iurada, Marco Ciccone, and Tatiana Tommasi. Finding Lottery Tickets in Vision Models via Data-driven
+Spectral Foresight Pruning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition
+(CVPR), pages 16142–16151, 2024. doi: 10.1109/CVPR52733.2024.01528.
+[49] Nicola K Dinsdale, Mark Jenkinson, and Ana IL Namburete. STAMP: Simultaneous Training and Model Pruning for
+Low Data Regimes in Medical Image Segmentation. Medical Image Analysis, 81:102583, 2022. doi: 10.1016/j.media.2022.
+102583.
+[50] Haoli Bai, Hongda Mao, and Dinesh Nair. Dynamically Pruning Segformer for Efficient Semantic Segmentation. In
+ICASSP 2022-2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), pages 3298–3302.
+IEEE, 2022. doi: 10.1109/ICASSP43922.2022.9747634.
+[51] Changdi Yang, Pu Zhao, Yanyu Li, Wei Niu, Jiexiong Guan, Hao Tang, Minghai Qin, Bin Ren, Xue Lin, and Yanzhi
+Wang. Pruning Parameterization with Bi-level Optimization for Efficient Semantic Segmentation on the Edge. In
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pages 15402–15412, 2023.
+doi: 10.1109/CVPR52729.2023.01478.
+[52] Jon Gutiérrez-Zaballa, Koldo Basterretxea, and Javier Echanobe. Evaluating Single Event Upsets in Deep Neural
+Networks for Semantic Segmentation: An Embedded System Perspective. Journal of Systems Architecture, 154:103242,
+2024. doi: 10.1016/j.sysarc.2024.103242.
+[53] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, Óscar Mata-Carballeira, and M. Victoria Martínez. Rapid
+Deployment of Domain-specific Hyperspectral Image Processors with Application to Autonomous Driving. In 2023 30th
+IEEE International Conference on Electronics, Circuits and Systems (ICECS), pages 1–6, 2023. doi: 10.1109/ICECS58634.
+2023.10382745.
+[54] ARM. Learn the Architecture: Introducing Neon. https://developer.arm.com/documentation/102474/0100/?lang=en,
+2020. Accessed: 2024-11-08.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 27
+[55] Yao Fu, Ephrem Wu, Ashish Sirasao, Sedny Attia, Kamran Khan, and Ralph Wittig. Deep Learning with INT8
+Optimization on Xilinx Devices. https://docs.xilinx.com/v/u/en-US/wp486-deep-learning-int8, 2016.
+[56] Bichen Wu, Alvin Wan, Xiangyu Yue, Peter Jin, Sicheng Zhao, Noah Golmant, Amir Gholaminejad, Joseph Gonzalez,
+and Kurt Keutzer. Shift: A Zero Flop, Zero Parameter Alternative to Spatial Convolutions. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition (CVPR), pages 9127–9135, 2018. doi: 10.1109/CVPR.2018.00951.
+[57] Yann LeCun, John Denker, and Sara Solla. Optimal Brain Damage. In D. Touretzky, editor, Advances in Neural
+Information Processing Systems, volume 2. Morgan-Kaufmann, 1989.
+[58] Hao Li, Asim Kadav, Igor Durdanovic, Hanan Samet, and Hans Peter Graf. Pruning Filters for Efficient ConvNets, 2017.
+[59] AMD-Xilinx. Vitis AI User Guide. UG1414 (v3.5) September 28, 2023. https://docs.xilinx.com/r/en-US/ug1414-vitis-
+ai/Vitis-AI-Overview, 2023.
+[60] Ilias Papadeas, Lazaros Tsochatzidis, Angelos Amanatiadis, and Ioannis Pratikakis. Real-time Semantic Image
+Segmentation with Deep Learning for Autonomous Driving: A Survey. Applied Sciences, 11(19):8802, 2021. doi:
+10.3390/app11198802.
+[61] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian Schroff, and Hartwig Adam. Encoder-decoder with Atrous
+Separable Convolution for Semantic Image Segmentation. In Proceedings of the European Conference on Computer
+Vision (ECCV), pages 801–818, 2018. doi: 10.1007/978-3-030-01234-2_49.
+[62] Leonardo Dagum and Ramesh Menon. OpenMP: An Industry Standard API for Shared-memory Programming. IEEE
+Computational Science and Engineering, 5(1):46–55, 1998. doi: 10.1109/99.660313.
+[63] David R Butenhof. Programming with POSIX Threads. Addison-Wesley Professional, 1997.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+

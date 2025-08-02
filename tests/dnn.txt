@@ -1,0 +1,10 @@
+What is the primary motivation for using hyperspectral imaging (HSI) in autonomous driving systems (ADS) instead of traditional RGB imaging? 
+What are the main challenges posed by Deep Neural Networks (DNNs) and HSI data preprocessing for real-time, on-the-edge deployment in safety-critical applications like ADS? 
+What specific optimization techniques does this work present for the co-design of a DNN-based HSI segmentation processor on an FPGA-based SoC for ADS? 
+How do the applied compression techniques impact the complexity and speed-up of the designed DNN without significantly degrading segmentation accuracy? 
+What is "metamerism," and how does HSI address this phenomenon in image processing applications? 
+Explain the main characteristics by which current pruning methods for DNNs can be differentiated. 
+What is the "lottery ticket hypothesis," and how did subsequent research challenge and refine this idea in network pruning? 
+How does the proposed post-training iterative pruning strategy for U-Net segmentation models utilize static and dynamic analyses? 
+What are the efficiency considerations for data representation when converting raw HSI data, and why is the conversion from Band Sequential (BSQ) to Band Interleaved by Pixel (BIP) performed mid-pipeline? 
+What strategies were employed to reduce bottlenecks and optimize performance in the DNN deployment pipeline, particularly regarding preprocessing? 
