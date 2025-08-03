@@ -374,474 +374,7 @@ classes. As for U-Net, the obtained precision is higher than 90% for every class
 and the IoU are higher than 85% except for the most diverse class, Other. Comparing both models,
 this U-Net model outperforms the SotA model in terms of global IoU (gIoU) and weighted IoU
 (wIoU), that is, the performance ceiling is constrained by the dataset quality and quantity rather
-than by the model’s ar
-
----
-
-t it could be worth exploring asymmetric encoder-decoder architectures
-with deeper encoder branches and lighter decoder even though, as discussed in Section 3.3, the
-recent hyperspectral benchmark HyperSeg [21] achieved better results on the same dataset using
-a U-Net compared to DeepLabv3+ [61], despite the latter having a more complex encoder and
-significantly simplified decoder.
-5 INTEGRATING RAW DATA PREPROCESSING IN DNN CO-DESIGN
-The basic preprocessing of HSI-Drive v2.0 raw images (see orange boxes in Figure 11) includes
-the following stages: cropping and clipping, reflectance correction through dark and flat images,
-partial demosaicing and band alignment via spatial bilinear interpolation (see [7] for a detailed
-description).
-Reflectance
-correction
-Partial
-demosaicing
-(216x409x25)
-(1088 x 2048)
-Acquisition Band
-alignment
-(216x409x25)
-Cropping
-(192x384x25)
-BSQ to BIP
-(192x384x25)
-FCN
-(192x384x25)
-Basic cube generation pipeline Training and on-board inference steps On-board inference step Input/output
-Image
-cropping and
-clipping
-(1080 x 2045)
-INT 16
-Row-based
-Cortex-A53
-PN norm.
-(192x384x25)
-Clipping
-(192x384x25)
-Symmetric
-norm.
-(192x384x25)
-(1080 x 2045)
-FLOAT 32
-Row-based
-Cortex-A53
-FLOAT 32
-BSQ
-Cortex-A53
-FLOAT 32
-BSQ
-Cortex-A53
-INT 16
-Row-based
-FLOAT 32
-BSQ
-Cortex-A53
-FLOAT 32
-BIP
-Cortex-A53
-FLOAT 32
-BIP
-Cortex-A53
-INT 8
-BIP
-DPU
-INT 8
-BIP
-DPU
-FLOAT 32
-BIP
-Cortex-A53
-Fig. 11. Pipeline scheme comprising from raw image preprocessing to DNN inference. In each step, information
-about image size, data representation, memory arrangement and task distribution is provided.
-Additionally, to adapt the cube for the U-Net architecture, an extra cropping or padding step
-is required due to the mismatch between the cube’s spatial size (216x409) and the DNN encoder-
-decoder architecture with a depth of 5 (see Section 3.2). The spatial size must be a multiple of
-2𝑑𝑒𝑝𝑡ℎ_𝑙𝑒𝑣𝑒𝑙 , so the nearest valid sizes are 192x384 (requiring cropping) and 224x416 (requiring
-padding). Padding could introduce issues with pixel values at the edges, which would hinder
-efficient preprocessing. Given these considerations and the suitability of 192x384 resolution for the
-application, cropping has been chosen. Notably, this cropping step cannot be combined with the
-initial one, as the edge pixels resulting from the band alignment process require data that would be
-missing if cropped earlier.
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-18 Gutiérrez-Zaballa et al.
-Apart from that, applying per-pixel normalization (PN) is recommended to generate a cube robust
-to varying lighting conditions. However, applying PN alters the data distribution, concentrating
-most of the values around 0.04 (the inverse of 25, the spectral size) and making the interval [0, 0.08]
-contain 99.72% of all pixel values (see [53]). If the DNN is to be quantized, applying image clipping
-is then beneficial. Clipping according to the channel distribution accurately represents 99.95%
-of the data, saving 3 integer bits to enhance quantization process resolution. Finally, symmetric
-normalization is applied during training, accelerated by hardware (see Section 6.2), and used as
-the DNN input. The full pipeline, including data sizes, data representations, and ARM/DPU task
-distribution, is shown in Figure 11.
-Several constraints impact the efficiency of data representation. First, the camera outputs a
-1088x2048 frame with 5x5 tiles in row-major order (see Figure 12b). Second, the AMD-Xilinx
-DPUCZDX8G inference engine requires data in Band Interleaved by Pixel (BIP) format. Third,
-cropping must be applied after band alignment to preserve edge spatial information. Finally, some
-operations are channel-wise (e.g., band alignment, cropping), while others are pixel-wise (e.g., PN
-norm, clipping, symmetric norm).
-Considering these constraints, converting raw data to Band Sequential (BSQ) format is more
-efficient initially since BSQ stores each band sequentially, matching the row-major order and
-improving memory access. Channel-wise operations benefit from BSQ’s consecutive spatial storage,
-whereas pixel-wise operations are faster in BIP, which stores spectral data contiguously (Figure
-12a). As shown in Figure 11, BSQ-favourable steps are performed early in the pipeline to optimize
-data transfer and speed, while BIP-favourable steps occur just before inference.
-A B
-Y Z
-C0
-C12
-C24
-BIPA B
-A Y
-Y Z
-B Z BSQ
-…
-… ……
-(a) Band interleaved by pixel (BIP) and band sequential
-format (BSQ) data organizations. (b) A 10x15 frame containing six 5x5 tiles.
-Fig. 12. Comparison of cube data organization in memory (left). The hyperspectral Fabry-Perot filter array
-used during raw-image acquisition (right).
-This approach allows loading entire rows into cache, reducing cache misses and accelerating
-processing. In contrast, BIP leads to scattered memory access and lower performance. Thus, con-
-verting the 2D raw image into a 3D BSQ cube enables faster, more efficient processing. Overall, the
-most efficient solution is to convert from BSQ to BIP mid-pipeline, as illustrated in Figure 11. The
-next section details the reordered operations to save computational time.
-6 DNN DEPLOYMENT AND COMPUTATIONAL PROFILING
-6.1 Hardware Selection
-ADS applications demand low power, cost efficiency, high throughput, and minimal latency. The
-AMD-Xilinx KV260 is well-suited for these needs, offering adaptable, high-performance AI pro-
-cessing at the edge, ensuring rapid development and production-ready solutions [13]. At the core
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 19
-of development board is the K26 SOM, which features a Zynq UltraScale+ MPSoC (see Figure 1).
-This includes a 64-bit quad-core ARM Cortex-A53 processor and a dual-core Cortex-R5F real-time
-processor within the processing systems, all integrated with a 16nm FinFET Programmable Logic
-(PL). The system accesses a 4 GB, 64-bit wide DDR4 external memory with a speed of 2400 Mb/s
-[14]. The PL can accommodate up to four DPU cores, which utilise high-speed data pathways and
-parallel processing elements optimized for fixed-point arithmetic units [16]. The heterogeneous ar-
-chitecture of the K26 SOM allows for the optimization of the deployment of AI models by offloading
-the execution of the corresponding tasks to both parts of the SOM.
-The DPU incorporates several on-chip memory banks, including block RAM (BRAM) and Ultra-
-RAM, to store weights, biases, and intermediate feature maps. Each block RAM holds 36Kb and
-can be configured as 4096x9b, 2048x18b, or 1024x36b, while each UltraRAM provides 288Kb with a
-fixed configuration of 4096x72b. UltraRAM can be used to replace BRAM in systems with limited
-BRAM resources, making it particularly useful in specific hardware implementations, such as the
-softmax function, which uses four BRAMs [16].
-In total, the DPU allocates up to 17 memory banks (256 KB per bank) for storing weights. Given
-that the pruned U-Net with 320K 8-bit parameters (including biases) would occupy only two
-memory banks, there is still potential room for parallel data access by utilizing additional banks.
-Additionally, the DPU dedicates one memory bank (32 KB) for biases and up to 24 memory banks
-(128 KB per bank, for a total of 3 MB) for activations.
-DPU architectures are categorized based on their peak operations per cycle, determined by
-pixel parallelism, input channel parallelism, and output channel parallelism. Smaller DPUs, which
-contain fewer DSPs, offer lower computational throughput and fewer weight banks, although they
-maintain the same number of bias and activation banks as larger configurations (see Table 4).
-Table 4. Resource usage of the various DPU configurations
-Parameter / DPU name B4096 B3136 B3136 B2304
-Pixel parallelism 8 8 8 8
-Input channel parallelism 16 14 14 12
-Output channel parallelism 16 14 14 12
-DSP 710 566 566 438
-RAM usage low high low high
-Number of bias banks 1 1 1 1
-Number of weight banks 17 15 15 13
-Number of activation banks 16 24 16 24
-BRAM 75 130 78 110
-URAM 48 40 40 36
-LUTs 50332 50007 48632 45100
-Flip flops 99035 82505 81008 71298
-The whole segmentation pipeline was coded in C++ (2017 standard) and cross-compiled for
-execution as an embedded system within a custom PetaLinux distribution, running on the KV260.
-Following the methodology employed in prior studies [7, 53], the performance was optimized by
-combining data-level parallelism using SIMD techniques [54] with thread-level parallelism via
-OpenMP pragmas [62], effectively reducing computational latency.
-6.2 Hardware-accelerated Cube Preprocessing Steps
-As explained in Section 5, the last preprocessing step of the raw data is the symmetric normalization,
-which fits the input cubes to [-1, 1) range. It can be seen in Equation 3 that channel-wise symmetric
-normalization is equivalent to a depthwise convolution operation (weight values are 2
-𝑚𝑎𝑥𝑖 −𝑚𝑖𝑛𝑖 and
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-20 Gutiérrez-Zaballa et al.
-bias values are ( 2∗𝑚𝑖𝑛𝑖
-𝑚𝑖𝑛𝑖 −𝑚𝑎𝑥𝑖 − 1)), so this layer can be inserted between the input layer and the first
-convolutional layer, enabling its acceleration by the DPU
-ˆ𝑥𝑖 = 2 ∗ 𝑥𝑖 − 𝑚𝑖𝑛𝑖
-𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 − 1 = 2
-𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 ∗ 𝑥𝑖 + ( 2 ∗ 𝑚𝑖𝑛𝑖
-𝑚𝑖𝑛𝑖 − 𝑚𝑎𝑥𝑖 − 1) (3)
-where 𝑥𝑖 is the unnormalized 192x384 slice of channel 𝑖, 𝑚𝑎𝑥𝑖 is the maximum value of channel 𝑖,
-𝑚𝑖𝑛𝑖 is the minimum value of channel 𝑖 and ˆ𝑥𝑖 is the symmetrically normalized 192x384 slice of
-spectral 𝑖.
-The main drawback of this methodology is the need to requantize the model. The quantization
-input symmetry was changed from symmetric to anti-symmetric because the DNN input now
-comes from the clipping process output (see Figure 11), where data values range from 0 to 0.149
-(the highest clipped value). Since Vitis AI only supports signed quantization, using scaled unsigned
-inputs reduces the dynamic range by half [59]. Therefore, it is essential to evaluate whether this
-requantization significantly degrades the model’s performance.
-It has been verified that the winning class changes for only about 2% of all pixels on average.
-Moreover, as shown in the comparison between Figures 13 and 14, these pixels are generally
-located at the boundaries between two or more classes or in regions where surrounding pixels
-are also misclassified. Therefore, the impact of the requantization process on overall performance
-degradation is negligible.
-(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
-Fig. 13. DPU output when the normalization is performed by software/explicitly.
-(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
-Fig. 14. DPU output when the normalization is performed by hardware/implicitly.
-6.3 Pruning and Its Influence on Deployment Efficiency
-Although pruning significantly reduces model size and complexity, accurately predicting the
-resulting inference speed-up is challenging due to factors such as preprocessing, quantization,
-external memory access, and the optimization of the processor’s logical and computational resources.
-Therefore, the quantized unpruned, one-time pruned, and two-times pruned models were evaluated
-in terms of frames per second (Figure 15a) and frames per second per watt (Figure 15b) when
-deployed across various DPU architecture versions. Smaller versions than the DPU B1600 were
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 21
-excluded, as their inference latency (highest at 74.023 ms for the low RAM, two-times pruned
-B1600) would exceed the latency of the preprocessing stage.
-B1600_lowRAM B1600
-B2304_lowRAM B2304
-B3136_lowRAM B3136
-B4096_lowRAM B4096
-1
-2
-3
-4
-5
-6
-7
-8Troughput improvement ratioNoPruning
-FirstIteration
-SecondIteration
-(a) Throughput ratio.
-B1600_lowRAM B1600
-B2304_lowRAM B2304
-B3136_lowRAM B3136
-B4096_lowRAM B4096
-1
-2
-3
-4
-5
-6
-7
-8Troughput/W improvement ratioNoPruning
-FirstIteration
-SecondIteration
-(b) Throughput/W ratio.
-Fig. 15. Assessment of the impact of pruning iterations and DPU choice on inference throughput (left) and
-throughput/W (right).
-As shown in Figure 15a, increasing the number of operations per cycle in the DPU correlates
-with improved throughput. Similarly, increasing the number of pruning iterations also leads to
-throughput gains. Regarding power consumption during inference (Figure 15b), the improvement
-ratio slightly decreases due to a small increase in power usage associated with higher operations per
-cycle. However, the difference in power consumption between the pruned models for a given DPU
-configuration is negligible The pruning methodology has improved latency by 2.86x (comparing
-the unpruned B4096 model and two-times pruned B4096 model), while the appropriate choice
-of DPU (B1600_lowRAM and B4096) has also contributed a 2.86x improvement. Together, these
-factors result in an overall throughput increase of 8.18× from the worst- to best-case scenario, as
-depicted in Figure 15a.
-6.4 Strategies for Bottleneck Reduction and Performance Optimization
-In the initial design, the application followed a single-stage pipeline: a new cube was generated
-only after the DPU completed inference on the previous one. The first column of Table 5 shows
-the time spent on each step, revealing that preprocessing latency is 2.5x higher than DPU latency,
-making preprocessing the primary bottleneck of the application.
-The first strategy to mitigate this bottleneck and improve throughput involved using one POSIX
-thread (pthread) for preprocessing and another for DNN inference. This parallelization leverages
-multicore processors, such as the quad-core ARM Cortex-A53, allowing each thread to run on a
-separate core. In this setup, synchronization mechanisms are necessary to manage shared resources,
-prevent race conditions, and ensure data integrity [63].
-To prevent the preprocessing thread from modifying the cube variable during DPU inference,
-several schemes were evaluated, including mutexes [63], alternating memory buffers, and dedicated
-buffers for each step. Considering the significant latency difference between the preprocessing and
-inference (see first column of Table 5), using separate buffers for each step was chosen to avoid
-the overhead introduced by mutexes. Consequently, the cube variable was modified only during
-the final preprocessing steps, allowing the DPU inference thread to process the previous cube
-uninterrupted.
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-22 Gutiérrez-Zaballa et al.
-Table 5. Time taken (Averaged over 100 executions) to complete each of the steps of the one/two/three stage
-whole application execution (Time is in ms).
-Step name / Num. of stages 1 2 3
-Image loading 3.255 4.790 7.039
-Cropping and clipping 1.377 8.832 9.302
-Reflectance correction 19.337 25.789 37.224
-Demosaicing 9.197 9.851 18.164
-Spatial bilinear interpolation 12.015 12.904 15.409 (87.138)
-Cropping + BSQ to BIP 26.548 29.930 52.791
-Clipping + PN 5.697 (77.426) 5.568 (97.664) 12.309 (65.100)
-DPU Inference* 32.842a 61.581b 62.217b
-Longest task time 110.268 97.664 87.138
-aB4096 DPU, optimum config. b B3136 DPU, power efficient config.
-∗It contains cube transmission times.
-In the two-stage pipeline, preprocessing remained the longest task but was faster than the
-combined preprocessing and inference time in the single-stage pipeline, leading to improved
-throughput (see second column of Table 5). However, running preprocessing and inference in
-parallel caused each task to slow down individually due to shared resource contention between
-threads. The results revealed a load imbalance, indicating an uneven workload distribution across
-threads that limited overall performance gains.
-To further increase throughput, the preprocessing stage was split into two parts: from the
-start up to spatial bilinear interpolation, and from the final cropping to PN. his created three
-concurrent threads: a CPU cube preprocessing thread, a CPU format-adapting thread, and a DPU
-inference thread. Synchronization is managed via condition variables, where the preprocessing
-thread signals the format-adapting thread to start, which then signals the DPU inference thread.
-To prevent race conditions, two separate buffers are used for the outputs of both the preprocessing
-and format-adapting threads.
-Since the first two stages run on the ARM processor, they share the 32 128-bit SIMD/floating-point
-registers. Introducing an additional thread reduces the available resources per thread, causing the
-total latency of these stages to be higher than in the single-stage pipeline. However, throughput
-improves because previously sequential operations now run in parallel. Results shown in the third
-column of Table 5 demonstrate a 15% (17 ms) reduction in the latency of the longest task.
-6.5 Comprehensive Selection of Deep Processing Unit
-Regardless of whether one, two, or three stages are used, preprocessing remains the system bot-
-tleneck, limiting overall throughput. Therefore, selecting the DPU configuration with the lowest
-latency is not always optimal, as it demands more hardware resources and higher power consump-
-tion. Moreover, because the input image size is 192x384x25 bytes (1.8 MB) and skip connections
-increase the size of deeper layer feature maps, not all activation maps fit in on-chip BRAM. In-
-creasing the number of memory banks for activations from 16 (2 MB) to 24 (3 MB) yields a 4 ms
-performance improvement (see Table 6, columns two and three).
-It is important to note that the B2304 configuration does not meet the inference latency require-
-ments needed to prevent the DPU from becoming the bottleneck when data synchronization tasks
-are included. As a result, the final DPU configuration uses a B3136 core with low RAM usage,
-achieving 10.54 FPS for the entire application pipeline. As shown in Table 4, this configuration
-reduces resource usage by 20.28% fewer DSPs, 16.67% fewer URAMs, 3.38% fewer registers, and
-16.69% fewer flip-flops.
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 23
-Table 6. Computational profiling (Averaged over 100 executions) of three stage whole application with the
-DPU configurations of Table 4 (Time is in ms).
-Parameter / DPU name B4096 B3136 B3136 B2304
-Cube preprocessing 89.786 88.931 87.138 85.554
-Format adapting 67.695 66.261 65.100 65.740
-DPU inference 19.241 38.865 42.959 54.897
-Avg. bandwidth (MB/s) 1759.738 882.568 798.328 625.645
-Power consumption on the K26 SOM was monitored using the platformstats application, which
-interfaces with the INA260 current sensor via I2C. The measured power consumption was 2.44W
-when the PL is powered down in idle state, 3.2W when the PL was powered up but not programmed,
-and 3.52W when the PL was powered up and programmed but not running. During application
-execution, average power consumption was 5.2W, almost 2W lower than previous results.
-7 CONCLUSIONS
-While the use of DNNs for HSI has been intensively investigated in recent years, their application
-to ADS and autonomous navigation remains particularly challenging. Integrating DNNs with the
-rich spectral information from snapshot HSI cameras significantly enhances intelligent vision
-capabilities by addressing metamerism issues inherent in traditional RGB systems. This paper
-addresses the main challenges in developing embedded processing architectures suited for deploying
-HSI-based intelligent vision systems in ADS. It is demonstrated that acquiring richer and more
-accurate spectral data with modern snapshot hyperspectral sensors enables the use of aggressive
-compression techniques without sacrificing performance.
-Snapshot filter-on-chip HSI technology, capable of capturing hyperspectral data at video rates,
-requires a sophisticated processing pipeline to convert raw 2D images into 3D data cubes compatible
-with DNN input. Although often overlooked, this preprocessing stage is a critical bottleneck,
-as confirmed in this design. To address this, a refined hardware/software co-design approach
-is proposed that balances task distribution, identifies inefficiencies, and enhances the overall
-performance on FPGA-based SoC platforms.
-For cube preprocessing, computational efficiency was maximized by combining thread-level and
-data-level parallelism on the quad-core ARM Cortex-A53 processor. The memory representation
-analysis considers constraints such as the 2D input format, DPU requirements, and the order and
-nature of preprocessing operations, which favour BSQ format initially and BIP format later for DPU
-compatibility. This approach avoids performance penalties from premature format conversion.
-Regarding compression techniques, an iterative pruning method based on static and dynamic
-analysis demonstrated a two-order-of-magnitude reduction in parameters and a one-order-of-
-magnitude decrease in OPS, achieving results comparable to SotA models in RGB benchmarks
-but with significantly lower computational complexity. A layer-by-layer comparison between
-pre-training and post-training pruning highlights opportunities to combine insights from each
-stage to develop more effective pruning techniques for segmentation, an area that remains under
-active development. The combined impact of pruning and DPU architecture selection was evaluated
-in terms of power consumption (W), logical resource usage (DSP units, LUTs), memory footprint
-(MB), model complexity (OPS), and throughput (FPS).
-To optimize the system pipeline, preprocessing was identified as the primary bottleneck. The
-system was therefore restructured into three concurrently executing stages: two preprocessing
-stages and one inference stage. This reorganization, together with pruning-based complexity
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-24 Gutiérrez-Zaballa et al.
-reduction, enabled the selection of a more efficient DPU architecture without compromising model
-performance.
-In conclusion, this work demonstrates that applying a hardware/software co-design approach and
-targeted optimization techniques enables the deployment of an HSI-based embedded processing
-architecture that enhances the robustness of intelligent vision systems for ADS. Nevertheless,
-further acceleration of raw image preprocessing is required, either through specialized hardware
-or by integrating this stage into the DNN feature extraction module. Additionally, obtaining low-
-complexity compressed models will facilitate exploration of stream or dataflow-type accelerators,
-where each neural network layer is mapped as a distinct hardware unit and interconnected in a
-stream-like manner to increase inference throughput.
-8 ACKNOWLEDGMENTS
-This work was partially supported by the University of the Basque Country (UPV/EHU) under
-grant GIU21/007, by the Basque Government under grant PRE_2024_2_0154 and by Union Europea-
-NextGenerationEU through the Cátedras Chip program, SOC4SENSING TSI-069100-2023-0004.
-REFERENCES
-[1] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully Convolutional Networks for Semantic Segmentation. In
-Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), pages 3431–3440, 2015. doi:
-10.1109/CVPR.2015.7298965.
-[2] Yujian Mo, Yan Wu, Xinneng Yang, Feilin Liu, and Yujun Liao. Review the State-of-the-art Technologies of Semantic
-Segmentation Based on Deep Learning. Neurocomputing, 493:626–646, 2022. doi: 10.1016/j.neucom.2022.01.005.
-[3] Rong Cui, He Yu, Tingfa Xu, Xiaoxue Xing, Xiaorui Cao, Kang Yan, and Jiexi Chen. Deep Learning in Medical
-Hyperspectral Images: A Review. Sensors, 22(24):9790, 2022. doi: 10.3390/s22249790.
-[4] Anton Terentev, Viktor Dolzhenko, Alexander Fedotov, and Danila Eremenko. Current State of Hyperspectral Remote
-Sensing for Early Plant Disease Detection: A Review. Sensors, 22(3):757, 2022. doi: 10.3390/s22030757.
-[5] Gözde Özdoğan, Xiaohui Lin, and Da-Wen Sun. Rapid and Noninvasive Sensory Analyses of Food Products by
-Hyperspectral Imaging: Recent Application Developments. Trends in Food Science & Technology, 111:151–165, 2021.
-doi: 10.1016/j.tifs.2021.02.044.
-[6] David H Foster, Kinjiro Amano, Sérgio MC Nascimento, and Michael J Foster. Frequency of Metamerism in Natural
-Scenes. Journal of the Optical Society of America A, 23(10):2359–2372, 2006. doi: 10.1364/JOSAA.23.002359.
-[7] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M. Victoria Martínez, Unai Martinez-Corral, Óscar Mata-
-Carballeira, and Inés del Campo. On-chip Hyperspectral Image Segmentation With Fully Convolutional Networks For
-Scene Understanding in Autonomous Driving. Journal of Systems Architecture, 139:102878, 2023. ISSN 1383-7621. doi:
-10.1016/j.sysarc.2023.102878.
-[8] Nathaniel Hanson, Benjamin Pyatski, Samuel Hibbard, Charles DiMarzio, and Taşkın Padır. Hyper-Drive: Visible-Short
-Wave Infrared Hyperspectral Imaging Datasets for Robots in Unstructured Environments. In 2023 13th Workshop on
-Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages 1–5. IEEE, 2023. doi:
-10.1109/WHISPERS61460.2023.10430802.
-[9] Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. Point-Supervised Semantic Segmentation of Natural Scenes via
-Hyperspectral Imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops
-(CVPRW), pages 1357–1367, 2024. doi: 10.1109/CVPRW63382.2024.00143.
-[10] Bert Geelen, Carolina Blanch, Pilar Gonzalez, Nicolaas Tack, and Andy Lambrechts. A Tiny VIS-NIR Snapshot Multi-
-spectral Camera. In Georg von Freymann, Winston V. Schoenfeld, Raymond C. Rumpf, and Henry Helvajian, editors,
-Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VIII, volume 9374, page 937414. International
-Society for Optics and Photonics, SPIE, 2015. doi: 10.1117/12.2077583.
-[11] Kathleen Vunckx and Wouter Charle. Accurate Video-Rate Multi-Spectral Imaging Using IMEC Snapshot Sensors. In
-2021 11th Workshop on Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages
-1–7, 2021. doi: 10.1109/WHISPERS52202.2021.9483975.
-[12] Bert Geelen, Nicolaas Tack, and Andy Lambrechts. A Compact Snapshot Multispectral Imager with A Monolithically
-Integrated Per-pixel Filter Mosaic. In Georg von Freymann, Winston V. Schoenfeld, and Raymond C. Rumpf, editors,
-Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VII, volume 8974, page 89740L. International
-Society for Optics and Photonics, SPIE, 2014. doi: 10.1117/12.2037607.
-, Vol. 1, No. 1, Article . Publication date: July 2025.
-Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 25
-[13] AMD-Xilinx. Kria K26 SOM: The Ideal Platform for Vision AI at the Edge. https://docs.xilinx.com/v/u/en-US/wp529-
-som-benchmarks, 2021.
-[14] AMD-Xilinx. Kria K26 SOM Data Sheet (DS987). https://docs.amd.com/r/en-US/ds987-k26-som/Overview, 2024.
-[15] ARM. Arm Cortex-A53 MPCore Processor Technical Reference Manual. https://developer.arm.com/documentation/
-ddi0500, 2018. Accessed: 2024-11-08.
-[16] Xilinx. DPUCZDX8G for Zynq UltraScale+ MPSoCs Product Guide (PG338). https://https://docs.xilinx.com/r/en-
-US/pg338-dpu?tocId=3xsG16y_QFTWvAJKHbisEw, 2024.
-[17] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M Victoria Martínez, and Unai Martinez-Corral. HSI-Drive
-v2.0: More Data for New Challenges in Scene Understanding for Autonomous Driving. In 2023 IEEE Symposium Series
-on Computational Intelligence (SSCI), pages 207–214. IEEE, 2023. doi: 10.1109/SSCI52147.2023.10371793.
-[18] Koldo Basterretxea, Jon Gutiérrez-Zaballa, Javier Echanobe, and María Victoria Martínez. Hsi-drive, 2023. URL
-https://doi.org/10.5281/zenodo.15686957.
-[19] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional Networks for Biomedical Image Segmenta-
-tion. In Medical Image Computing and Computer-assisted Intervention–MICCAI 2015: 18th International Conference,
-Munich, Germany, October 5-9, 2015, Proceedings, Part III 18, pages 234–241. Springer, 2015. doi: 10.1007/978-3-319-
-24574-4_28.
-[20] Christian Winkens, Florian Sattler, Veronika Adams, and Dietrich Paulus. HyKo: A Spectral Dataset for Scene
-Understanding. In Proceedings of the IEEE International Conference on Computer Vision Workshops (ICCVW), pages
-254–261, 2017. doi: 10.1109/ICCVW.2017.39.
-[21] Nick Theisen, Robin Bartsch, Dietrich Paulus, and Peer Neubert. HS3-Bench: A Benchmark and Strong Baseline for
-Hyperspectral Semantic Segmentation in Driving Scenarios. In 2024 IEEE/RSJ International Conference on Intelligent
-Robots and Systems (IROS), pages 5895–5901. IEEE, 2024. doi: 10.1109/IROS58592.2024.10801768.
-[22] Shaodi You, Erqi Huang, Shuaizhe Liang, Yongrong Zheng, Yunxiang Li, Fan Wang, Sen Lin, Qiu Shen, Xun Cao,
-Diming Zhang, et al. Hyperspectral City V1.0 Dataset and Benchmark. arXiv, 2019. doi: 10.48550/arXiv.1907.10270.
-[23] Yuxing Huang, Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. HSICityV2: Urban Scene Understanding via Hyper-
-spectral Images, Jul 2021.
-[24] Jiarou Lu, Huafeng Liu, Yazhou Yao, Shuyin Tao, Zhenming Tang, and Jianfeng Lu. Hsi Road: A Hyper Spectral Image
-Dataset for Road Segmentation. In 2020 IEEE International Conference on Multimedia and Expo (ICME), pages 1–6. IEEE,
-2020. doi: 10.1109/ICME46284.2020.9102890.
-[25] K. Basterretxea, V. Martínez, J. Echanobe, J. Gutiérrez–Zaballa, and I. Del Campo. HSI-Drive: A Dataset for the
-Research of Hyperspectral Image Processing Applied to Autonomous Driving Systems. In 2021 IEEE Intelligent Vehicles
-Symposium (IV), pages 866–873, 2021. doi: 10.1109/IV48863.2021.9575298.
-[26] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe Franke,
-Stefan Roth, and Bernt Schiele. The Cityscapes Dataset for Semantic Urban Scene Understanding. In Proceedings of the
-IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016. doi: 10.1109/CVPR.2016.350.
-[27] Fisher Yu, H
-
----
-
-chitectural complexity. Since applying a stratified 5-fold cross-validation
+than by the model’s architectural complexity. Since applying a stratified 5-fold cross-validation
 aims to verify the invariance of the model’s robustness to different partitions of the dataset, from
 now on, and without loss of generalization, the results provided will correspond to the fifth fold.
 Table 1. IoU for the 32-bit floating-point U-Net model (left) and Intern Image [31] model (right).
@@ -876,7 +409,11 @@ minimizing the difference in the magnitude of the elements in the same layer or 
 having to perform the costly per-channel quantization. In addition to this, the quantization scheme
 has been homogeneous and uniform, the scale factor is restricted to be a power of two, and the
 quantization granularity is per-tensor. The comparative figures after quantization are summed
-up in Table 2 and show that there has been almost no degradation in the IoU after the custom
+up in Table 2 and show that there has been almost no degrada
+
+---
+
+tion in the IoU after the custom
 quantization of the U-Net.
 Table 2. IoU of the U-Net models according to the data representation.
 Data representation Mparams GFLOPS Size (MB) Road Marks Vegetation Sky Other Global Weighted
@@ -1386,11 +923,470 @@ for pruning ratios of 0.6 and 0.7, pre-training pruning achieved lower scores th
 pruning, despite the latter not being applied iteratively. Only at a 0.8 pruning ratio did pre-training
 pruning outperform the iterative method in two of three initializations, likely due to the relatively
 high number of parameters retained in those models.
-These results suggest tha
+These results suggest that it could be worth exploring asymmetric encoder-decoder architectures
+with deeper encoder branches and lighter decoder even though, as discussed in Section 3.3, the
+recent hyperspectral benchmark HyperSeg [21] achieved better results on the same dataset using
+a U-Net compared to DeepLabv3+ [61], despite the latter having a more complex encoder and
+significantly simplified decoder.
+5 INTEGRATING RAW DATA PREPROCESSING IN DNN CO-DESIGN
+The basic preprocessing of HSI-Drive v2.0 raw images (see orange boxes in Figure 11) includes
+the following stages: cropping and clipping, reflectance correction through dark and flat images,
+partial demosaicing and band alignment via spatial bilinear interpolation (see [7] for a detailed
+description).
+Reflectance
+correction
+Partial
+demosaicing
+(216x409x25)
+(1088 x 2048)
+Acquisition Band
+alignment
+(216x409x25)
+Cropping
+(192x384x25)
+BSQ to BIP
+(192x384x25)
+FCN
+(192x384x25)
+Basic cube generation pipeline Training and on-board inference steps On-board inference step Input/output
+Image
+cropping and
+clipping
+(1080 x 2045)
+INT 16
+Row-based
+Cortex-A53
+PN norm.
+(192x384x25)
+Clipping
+(192x384x25)
+Symmetric
+norm.
+(192x384x25)
+(1080 x 2045)
+FLOAT 32
+Row-based
+Cortex-A53
+FLOAT 32
+BSQ
+Cortex-A53
+FLOAT 32
+BSQ
+Cortex-A53
+INT 16
+Row-based
+FLOAT 32
+BSQ
+Cortex-A53
+FLOAT 32
+BIP
+Cortex-A53
+FLOAT 32
+BIP
+Cortex-A53
+INT 8
+BIP
+DPU
+INT 8
+BIP
+DPU
+FLOAT 32
+BIP
+Cortex-A53
+Fig. 11. Pipeline scheme comprising from raw image preprocessing to DNN inference. In each step, information
+about image size, data representation, memory arrangement and task distribution is provided.
+Additionally, to adapt the cube for the U-Net architecture, an extra cropping or padding step
+is required due to the mismatch between the cube’s spatial size (216x409) and the DNN encoder-
+decoder architecture with a depth of 5 (see Section 3.2). The spatial size must be a multiple of
+2𝑑𝑒𝑝𝑡ℎ_𝑙𝑒𝑣𝑒𝑙 , so the nearest valid sizes are 192x384 (requiring cropping) and 224x416 (requiring
+padding). Padding could introduce issues with pixel values at the edges, which would hinder
+efficient preprocessing. Given these considerations and the suitability of 192x384 resolution for the
+application, cropping has been chosen. Notably, this cropping step cannot be combined with the
+initial one, as the edge pixels resulting from the band alignment process require data that would be
+missing if cropped earlier.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+18 Gutiérrez-Zaballa et al.
+Apart from that, applying per-pixel normalization (PN) is recommended to generate a cube robust
+to varying lighting conditions. However, applying PN alters the data distribution, concentrating
+most of the values around 0.04 (the inverse of 25, the spectral size) and making the interval [0, 0.08]
+contain 99.72% of all pixel values (see [53]). If the DNN is to be quantized, applying image clipping
+is then beneficial. Clipping according to the channel distribution accurately represents 99.95%
+of the data, saving 3 integer bits to enhance quantization process resolution. Finally, symmetric
+normalization is applied during training, accelerated by hardware (see Section 6.2), and used as
+the DNN input. The full pipeline, including data sizes, data representations, and ARM/DPU task
+distribution, is shown in Figure 11.
+Several constraints impact the efficiency of data representation. First, the camera outputs a
+1088x2048 frame with 5x5 tiles in row-major order (see Figure 12b). Second, the AMD-Xilinx
+DPUCZDX8G inference engine requires data in Band Interleaved by Pixel (BIP) format. Third,
+cropping must be applied after band alignment to preserve edge spatial information. Finally, some
+operations are channel-wise (e.g., band alignment, cropping), while others are pixel-wise (e.g., PN
+norm, clipping, symmetric norm).
+Considering these constraints, converting raw data to Band Sequential (BSQ) format is more
+efficient initially since BSQ stores each band sequentially, matching the row-major order and
+improving memory access. Channel-wise operations benefit from BSQ’s consecutive spatial storage,
+whereas pixel-wise operations are faster in BIP, which stores spectral data contiguously (Figure
+12a). As shown in Figure 11, BSQ-favourable steps are performed early in the pipeline to optimize
+data transfer and speed, while BIP-favourable steps occur just before inference.
+A B
+Y Z
+C0
+C12
+C24
+BIPA B
+A Y
+Y Z
+B Z BSQ
+…
+… ……
+(a) Band interleaved by pixel (BIP) and band sequential
+format (BSQ) data organizations. (b) A 10x15 frame containing six 5x5 tiles.
+Fig. 12. Comparison of cube data organization in memory (left). The hyperspectral Fabry-Perot filter array
+used during raw-image acquisition (right).
+This approach allows loading entire rows into cache, reducing cache misses and accelerating
+processing. In contrast, BIP leads to scattered memory access and lower performance. Thus, con-
+verting the 2D raw image into a 3D BSQ cube enables faster, more efficient processing. Overall, the
+most efficient solution is to convert from BSQ to BIP mid-pipeline, as illustrated in Figure 11. The
+next section details the reordered operations to save computational time.
+6 DNN DEPLOYMENT AND COMPUTATIONAL PROFILING
+6.1 Hardware Selection
+ADS applications demand low power, cost efficiency, high throughput, and minimal latency. The
+AMD-Xilinx KV260 is well-suited for these needs, offering adaptable, high-performance AI pro-
+cessing at the edge, ensuring rapid development and production-ready solutions [13]. At the core
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 19
+of development board is the K26 SOM, which features a Zynq UltraScale+ MPSoC (see Figure 1).
+This includes a 64-bit quad-core ARM Cortex-A53 processor and a dual-core Cortex-R5F real-time
+processor within the processing systems, all integrated with a 16nm FinFET Programmable Logic
+(PL). The system accesses a 4 GB, 64-bit wide DDR4
 
 ---
 
-aofeng Chen, Xin Wang, Wenqi Xian, Yingying Chen, Fangchen Liu, Vashisht Madhavan, and Trevor Darrell.
+ external memory with a speed of 2400 Mb/s
+[14]. The PL can accommodate up to four DPU cores, which utilise high-speed data pathways and
+parallel processing elements optimized for fixed-point arithmetic units [16]. The heterogeneous ar-
+chitecture of the K26 SOM allows for the optimization of the deployment of AI models by offloading
+the execution of the corresponding tasks to both parts of the SOM.
+The DPU incorporates several on-chip memory banks, including block RAM (BRAM) and Ultra-
+RAM, to store weights, biases, and intermediate feature maps. Each block RAM holds 36Kb and
+can be configured as 4096x9b, 2048x18b, or 1024x36b, while each UltraRAM provides 288Kb with a
+fixed configuration of 4096x72b. UltraRAM can be used to replace BRAM in systems with limited
+BRAM resources, making it particularly useful in specific hardware implementations, such as the
+softmax function, which uses four BRAMs [16].
+In total, the DPU allocates up to 17 memory banks (256 KB per bank) for storing weights. Given
+that the pruned U-Net with 320K 8-bit parameters (including biases) would occupy only two
+memory banks, there is still potential room for parallel data access by utilizing additional banks.
+Additionally, the DPU dedicates one memory bank (32 KB) for biases and up to 24 memory banks
+(128 KB per bank, for a total of 3 MB) for activations.
+DPU architectures are categorized based on their peak operations per cycle, determined by
+pixel parallelism, input channel parallelism, and output channel parallelism. Smaller DPUs, which
+contain fewer DSPs, offer lower computational throughput and fewer weight banks, although they
+maintain the same number of bias and activation banks as larger configurations (see Table 4).
+Table 4. Resource usage of the various DPU configurations
+Parameter / DPU name B4096 B3136 B3136 B2304
+Pixel parallelism 8 8 8 8
+Input channel parallelism 16 14 14 12
+Output channel parallelism 16 14 14 12
+DSP 710 566 566 438
+RAM usage low high low high
+Number of bias banks 1 1 1 1
+Number of weight banks 17 15 15 13
+Number of activation banks 16 24 16 24
+BRAM 75 130 78 110
+URAM 48 40 40 36
+LUTs 50332 50007 48632 45100
+Flip flops 99035 82505 81008 71298
+The whole segmentation pipeline was coded in C++ (2017 standard) and cross-compiled for
+execution as an embedded system within a custom PetaLinux distribution, running on the KV260.
+Following the methodology employed in prior studies [7, 53], the performance was optimized by
+combining data-level parallelism using SIMD techniques [54] with thread-level parallelism via
+OpenMP pragmas [62], effectively reducing computational latency.
+6.2 Hardware-accelerated Cube Preprocessing Steps
+As explained in Section 5, the last preprocessing step of the raw data is the symmetric normalization,
+which fits the input cubes to [-1, 1) range. It can be seen in Equation 3 that channel-wise symmetric
+normalization is equivalent to a depthwise convolution operation (weight values are 2
+𝑚𝑎𝑥𝑖 −𝑚𝑖𝑛𝑖 and
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+20 Gutiérrez-Zaballa et al.
+bias values are ( 2∗𝑚𝑖𝑛𝑖
+𝑚𝑖𝑛𝑖 −𝑚𝑎𝑥𝑖 − 1)), so this layer can be inserted between the input layer and the first
+convolutional layer, enabling its acceleration by the DPU
+ˆ𝑥𝑖 = 2 ∗ 𝑥𝑖 − 𝑚𝑖𝑛𝑖
+𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 − 1 = 2
+𝑚𝑎𝑥𝑖 − 𝑚𝑖𝑛𝑖 ∗ 𝑥𝑖 + ( 2 ∗ 𝑚𝑖𝑛𝑖
+𝑚𝑖𝑛𝑖 − 𝑚𝑎𝑥𝑖 − 1) (3)
+where 𝑥𝑖 is the unnormalized 192x384 slice of channel 𝑖, 𝑚𝑎𝑥𝑖 is the maximum value of channel 𝑖,
+𝑚𝑖𝑛𝑖 is the minimum value of channel 𝑖 and ˆ𝑥𝑖 is the symmetrically normalized 192x384 slice of
+spectral 𝑖.
+The main drawback of this methodology is the need to requantize the model. The quantization
+input symmetry was changed from symmetric to anti-symmetric because the DNN input now
+comes from the clipping process output (see Figure 11), where data values range from 0 to 0.149
+(the highest clipped value). Since Vitis AI only supports signed quantization, using scaled unsigned
+inputs reduces the dynamic range by half [59]. Therefore, it is essential to evaluate whether this
+requantization significantly degrades the model’s performance.
+It has been verified that the winning class changes for only about 2% of all pixels on average.
+Moreover, as shown in the comparison between Figures 13 and 14, these pixels are generally
+located at the boundaries between two or more classes or in regions where surrounding pixels
+are also misclassified. Therefore, the impact of the requantization process on overall performance
+degradation is negligible.
+(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
+Fig. 13. DPU output when the normalization is performed by software/explicitly.
+(a) 𝑛𝑓 1322_058. (b) 𝑛𝑓 2221_015. (c) 𝑛𝑓 3123_149.
+Fig. 14. DPU output when the normalization is performed by hardware/implicitly.
+6.3 Pruning and Its Influence on Deployment Efficiency
+Although pruning significantly reduces model size and complexity, accurately predicting the
+resulting inference speed-up is challenging due to factors such as preprocessing, quantization,
+external memory access, and the optimization of the processor’s logical and computational resources.
+Therefore, the quantized unpruned, one-time pruned, and two-times pruned models were evaluated
+in terms of frames per second (Figure 15a) and frames per second per watt (Figure 15b) when
+deployed across various DPU architecture versions. Smaller versions than the DPU B1600 were
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 21
+excluded, as their inference latency (highest at 74.023 ms for the low RAM, two-times pruned
+B1600) would exceed the latency of the preprocessing stage.
+B1600_lowRAM B1600
+B2304_lowRAM B2304
+B3136_lowRAM B3136
+B4096_lowRAM B4096
+1
+2
+3
+4
+5
+6
+7
+8Troughput improvement ratioNoPruning
+FirstIteration
+SecondIteration
+(a) Throughput ratio.
+B1600_lowRAM B1600
+B2304_lowRAM B2304
+B3136_lowRAM B3136
+B4096_lowRAM B4096
+1
+2
+3
+4
+5
+6
+7
+8Troughput/W improvement ratioNoPruning
+FirstIteration
+SecondIteration
+(b) Throughput/W ratio.
+Fig. 15. Assessment of the impact of pruning iterations and DPU choice on inference throughput (left) and
+throughput/W (right).
+As shown in Figure 15a, increasing the number of operations per cycle in the DPU correlates
+with improved throughput. Similarly, increasing the number of pruning iterations also leads to
+throughput gains. Regarding power consumption during inference (Figure 15b), the improvement
+ratio slightly decreases due to a small increase in power usage associated with higher operations per
+cycle. However, the difference in power consumption between the pruned models for a given DPU
+configuration is negligible The pruning methodology has improved latency by 2.86x (comparing
+the unpruned B4096 model and two-times pruned B4096 model), while the appropriate choice
+of DPU (B1600_lowRAM and B4096) has also contributed a 2.86x improvement. Together, these
+factors result in an overall throughput increase of 8.18× from the worst- to best-case scenario, as
+depicted in Figure 15a.
+6.4 Strategies for Bottleneck Reduction and Performance Optimization
+In the initial design, the application followed a single-stage pipeline: a new cube was generated
+only after the DPU completed inference on the previous one. The first column of Table 5 shows
+the time spent on each step, revealing that preprocessing latency is 2.5x higher than DPU latency,
+making preprocessing the primary bottleneck of the application.
+The first strategy to mitigate this bottleneck and improve throughput involved using one POSIX
+thread (pthread) for preprocessing and another for DNN inference. This parallelization leverages
+multicore processors, such as the quad-core ARM Cortex-A53, allowing each thread to run on a
+separate core. In this setup, synchronization mechanisms are necessary to manage shared resources,
+prevent race conditions, and ensure data integrity [63].
+To prevent the preprocessing thread from modifying the cube variable during DPU inference,
+several schemes were evaluated, including mutexes [63], alternating memory buffers, and dedicated
+buffers for each step. Considering the significant latency difference between the preprocessing and
+inference (see first column of Table 5), using separate buffers for each step was chosen to avoid
+the overhead introduced by mutexes. Consequently, the cube variable was modified only during
+the final preprocessing steps, allowing the DPU inference thread to process the previous cube
+uninterrupted.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+22 Gutiérrez-Zaballa et al.
+Table 5. Time taken (Averaged over 100 executions) to complete each of the steps of the one/two/three stage
+whole application execution (Time is in ms).
+Step name / Num. of stages 1 2 3
+Image loading 3.255 4.790 7.039
+Cropping and clipping 1.377 8.832 9.302
+Reflectance correction 19.337 25.789 37.224
+Demosaicing 9.197 9.851 18.164
+Spatial bilinear interpolation 12.015 12.904 15.409 (87.138)
+Cropping + BSQ to BIP 26.548 29.930 52.791
+Clipping + PN 5.697 (77.426) 5.568 (97.664) 12.309 (65.100)
+DPU Inference* 32.842a 61.581b 62.217b
+Longest task time 110.268 97.664 87.138
+aB4096 DPU, optimum config. b B3136 DPU, power efficient config.
+∗It contains cube transmission times.
+In the two-stage pipeline, preprocessing remained the longest task but was faster than the
+combined preprocessing and inference time in the single-stage pipeline, leading to improved
+throughput (see second column of Table 5). However, running preprocessing and inference in
+parallel caused each task to slow down individually due to shared resource contention between
+threads. The results revealed a load imbalance, indicating an uneven workload distribution across
+threads that limited overall performance gains.
+To further increase throughput, the preprocessing stage was split into two parts: from the
+start up to spatial bilinear interpolation, and from the final cropping to PN. his created three
+concurrent threads: a CPU cube preprocessing thread, a CPU format-adapting thread, and a DPU
+inference thread. Synchronization is managed via condition variables, where the preprocessing
+thread signals the format-adapting thread to start, which then signals the DPU inference thread.
+To prevent race conditions, two separate buffers are used for the outputs of both the preprocessing
+and format-adapting threads.
+Since the first two stages run on the ARM processor, they share the 32 128-bit SIMD/floating-point
+registers. Introducing an additional thread reduces the available resources per thread, causing the
+total latency of these stages to be higher than in the single-stage pipeline. However, throughput
+improves because previously sequential operations now run in parallel. Results shown in the third
+column of Table 5 demonstrate a 15% (17 ms) reduction in the latency of the longest task.
+6.5 Comprehensive Selection of Deep Processing Unit
+Regardless of whether one, two, or three stages are used, preprocessing remains the system bot-
+tleneck, limiting overall throughput. Therefore, selecting the DPU configuration with the lowest
+latency is not always optimal, as it demands more hardware resources and higher power consump-
+tion. Moreover, because the input image size is 192x384x25 bytes (1.8 MB) and skip connections
+increase the size of deeper layer feature maps, not all activation maps fit in on-chip BRAM. In-
+creasing the number of memory banks for activations from 16 (2 MB) to 24 (3 MB) yields a 4 ms
+performance improvement (see Table 6, columns two and three).
+It is important to note that the B2304 configuration does not meet the inference latency require-
+ments needed to prevent the DPU from becoming the bottleneck when data synchronization tasks
+are included. As a result, the final DPU configuration uses a B3136 core with low RAM usage,
+achieving 10.54 FPS for the entire application pipeline. As shown in Table 4, this configuration
+reduces resource usage by 20.28% fewer DSPs, 16.67% fewer URAMs, 3.38% fewer registers, and
+16.69% fewer flip-flops.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 23
+Table 6. Computational profiling (Averaged over 100 executions) of three stage whole application with the
+DPU configurations of Table 4 (Time is in ms).
+Parameter / DPU name B4096 B3136 B3136 B2304
+Cube preprocessing 89.786 88.931 87.138 85.554
+Format adapting 67.695 66.261 65.100 65.740
+DPU inference 19.241 38.865 42.959 54.897
+Avg. bandwidth (MB/s) 1759.738 882.568 798.328 625.645
+Power consumption on the K26 SOM was monitored using the platformstats application, which
+interfaces with the INA260 current sensor via I2C. The measured power consumption was 2.44W
+when the PL is powered down in idle state, 3.2W when the PL was powered up but not programmed,
+and 3.52W when the PL was powered up and programmed but not running. During application
+execution, average power consumption was 5.2W, almost 2W lower than previous results.
+7 CONCLUSIONS
+While the use of DNNs for HSI has been intensively investigated in recent years, their application
+to ADS and autonomous navigation remains particularly challenging. Integrating DNNs with the
+rich spectral information from snapshot HSI cameras significantly enhances intelligent vision
+capabilities by addressing metamerism issues inherent in traditional RGB systems. This paper
+addresses the main challenges in developing embedded processing architectures suited for deploying
+HSI-based intelligent vision systems in ADS. It is demonstrated that acquiring richer and more
+accurate spectral data with modern snapshot hyperspectral sensors enables the use of aggressive
+compression techniques without sacrificing performance.
+Snapshot filter-on-chip HSI technology, capable of capturing hyperspectral data at video rates,
+requires a sophisticated processing pipeline to convert raw 2D images into 3D data cubes compatible
+with DNN input. Although often overlooked, this preprocessing stage is a critical bottleneck,
+as confirmed in this design. To address this, a refined hardware/software co-design approach
+is proposed that balances task distribution, identifies inefficiencies, and enhances the overall
+performance on FPGA-based SoC platforms.
+For cube preprocessing, computational efficiency was maximized by combining thread-level and
+data-level parallelism on the quad-core ARM Cortex-A53 processor. The memory representation
+analysis considers constraints such as the 2D input format, DPU requirements, and the order and
+nature of preprocessing operations, which favour BSQ format initially and BIP format later for DPU
+compatibility. This approach avoids performance penalties from premature format conversion.
+Regarding compression techniques, an iterative pruning method based on static and dynamic
+analysis demonstrated a two-order-of-magnitude reduction in parameters and a one-order-of-
+magnitude decrease in OPS, achieving results comparable to SotA models in RGB benchmarks
+but with significantly lower computational complexity. A layer-by-layer comparison between
+pre-training and post-training pruning highlights opportunities to combine insights from each
+stage to develop more effective pruning techniques for segmentation, an area that remains under
+active development. The combined impact of pruning and DPU architecture selection was evaluated
+in terms of power consumption (W), logical resource usage (DSP units, LUTs), memory footprint
+(MB), model complexity (OPS), and throughput (FPS).
+To optimize the system pipeline, preprocessing was identified as the primary bottleneck. The
+system was therefore restructured into three concurrently executing stages: two preprocessing
+stages and one inference stage. This reorganization, together with pruning-based complexity
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+24 Gutiérrez-Zaballa et al.
+reduction, enabled the selection of a more efficient DPU architecture without compromising model
+performance.
+In conclusion, this work demonstrates that applying a hardware/software co-design approach and
+targeted optimization techniques enables the deployment of an HSI-based embedded processing
+architecture that enhances the robustness of intelligent vision systems for ADS. Nevertheless,
+further acceleration of raw image preprocessing is required, either through specialized hardware
+or by integrating this stage into the DNN feature extraction module. Additionally, obtaining low-
+complexity compressed models will facilitate exploration of stream or dataflow-type accelerators,
+where each neural network layer is mapped as a distinct hardware unit and interconnected in a
+stream-like manner to increase inference throughput.
+8 ACKNOWLEDGMENTS
+This work was partially supported by the University of the Basque Country (UPV/EHU) under
+grant GIU21/007, by the Basque Government under grant PRE_2024_2_0154 and by Union Europea-
+NextGenerationEU through the Cátedras Chip program, SOC4SENSING TSI-069100-2023-0004.
+REFERENCES
+[1] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully Convolutional Networks for Semantic Segmentation. In
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), pages 3431–3440, 2015. doi:
+10.1109/CVPR.2015.7298965.
+[2] Yujian Mo, Yan Wu, Xinneng Yang, Feilin Liu, and Yujun Liao. Review the State-of-the-art Technologies of Semantic
+Segmentation Based on Deep Learning. Neurocomputing, 493:626–646, 2022. doi: 10.1016/j.neucom.2022.01.005.
+[3] Rong Cui, He Yu, Tingfa Xu, Xiaoxue Xing, Xiaorui Cao, Kang Yan, and Jiexi Chen. Deep Learning in Medical
+Hyperspectral Images: A Review. Sensors, 22(24):9790, 2022. doi: 10.3390/s22249790.
+[4] Anton Terentev, Viktor Dolzhenko, Alexander Fedotov, and Danila Eremenko. Current State of Hyperspectral Remote
+Sensing for Early Plant Disease Detection: A Review. Sensors, 22(3):757, 2022. doi: 10.3390/s22030757.
+[5] Gözde Özdoğan, Xiaohui Lin, and Da-Wen Sun. Rapid and Noninvasive Sensory Analyses of Food Products by
+Hyperspectral Imaging: Recent Application Developments. Trends in Food Science & Technology, 111:151–165, 2021.
+doi: 10.1016/j.tifs.2021.02.044.
+[6] David H Foster, Kinjiro Amano, Sérgio MC Nascimento, and Michael J Foster. Frequency of Metamerism in Natural
+Scenes. Journal of the Optical Society of America A, 23(10):2359–2372, 2006. doi: 10.1364/JOSAA.23.002359.
+[7] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M. Victoria Martínez, Unai Martinez-Corral, Óscar Mata-
+Carballeira, and Inés del Campo. On-chip Hyperspectral Image Segmentation With Fully Convolutional Networks For
+Scene Understanding in Autonomous Driving. Journal of Systems Architecture, 139:102878, 2023. ISSN 1383-7621. doi:
+10.1016/j.sysarc.2023.102878.
+[8] Nathaniel Hanson, Benjamin Pyatski, Samuel Hibbard, Charles DiMarzio, and Taşkın Padır. Hyper-Drive: Visible-Short
+Wave Infrared Hyperspectral Imaging Datasets for Robots in Unstructured Environments. In 2023 13th Workshop on
+Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages 1–5. IEEE, 2023. doi:
+10.1109/WHISPERS61460.2023.10430802.
+[9] Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. Point-Supervised Semantic Segmentation of Natural Scenes via
+Hyperspectral Imaging. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops
+(CVPRW), pages 1357–1367, 2024. doi: 10.1109/CVPRW63382.2024.00143.
+[10] Bert Geelen, Carolina Blanch, Pilar Gonzalez, Nicolaas Tack, and Andy Lambrechts. A Tiny VIS-NIR Snapshot Multi-
+spectral Camera. In Georg von Freymann, Winston V. Schoenfeld, Raymond C. Rumpf, and Henry Helvajian, editors,
+Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VIII, volume 9374, page 937414. International
+Society for Optics and Photonics, SPIE, 2015. doi: 10.1117/12.2077583.
+[11] Kathleen Vunckx and Wouter Charle. Accurate Video-Rate Multi-Spectral Imaging Using IMEC Snapshot Sensors. In
+2021 11th Workshop on Hyperspectral Imaging and Signal Processing: Evolution in Remote Sensing (WHISPERS), pages
+1–7, 2021. doi: 10.1109/WHISPERS52202.2021.9483975.
+[12] Bert Geelen, Nicolaas Tack, and Andy Lambrechts. A Compact Snapshot Multispectral Imager with A Monolithically
+Integrated Per-pixel Filter Mosaic. In Georg von Freymann, Winston V. Schoenfeld, and Raymond C. Rumpf, editors,
+Advanced Fabrication Technologies for Micro/Nano Optics and Photonics VII, volume 8974, page 89740L. International
+Society for Optics and Photonics, SPIE, 2014. doi: 10.1117/12.2037607.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+Optimization of DNN-based HSI Segmentation FPGA-based SoC for ADS: A Practical Approach 25
+[13] AMD-Xilinx. Kria K26 SOM: The Ideal Platform for Vision AI at the Edge. https://docs.xilinx.com/v/u/en-US/wp529-
+som-benchmarks, 2021.
+[14] AMD-Xilinx. Kria K26 SOM Data Sheet (DS987). https://docs.amd.com/r/en-US/ds987-k26-som/Overview, 2024.
+[15] ARM. Arm Cortex-A53 MPCore Processor Technical Reference Manual. https://developer.arm.com/documentation/
+ddi0500, 2018. Accessed: 2024-11-08.
+[16] Xilinx. DPUCZDX8G for Zynq UltraScale+ MPSoCs Product Guide (PG338). https://https://docs.xilinx.com/r/en-
+US/pg338-dpu?tocId=3xsG16y_QFTWvAJKHbisEw, 2024.
+[17] Jon Gutiérrez-Zaballa, Koldo Basterretxea, Javier Echanobe, M Victoria Martínez, and Unai Martinez-Corral. HSI-Drive
+v2.0: More Data for New Challenges in Scene Understanding for Autonomous Driving. In 2023 IEEE Symposium Series
+on Computational Intelligence (SSCI), pages 207–214. IEEE, 2023. doi: 10.1109/SSCI52147.2023.10371793.
+[18] Koldo Basterretxea, Jon Gutiérrez-Zaballa, Javier Echanobe, and María Victoria Martínez. Hsi-drive, 2023. URL
+https://doi.org/10.5281/zenodo.15686957.
+[19] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional Networks for Biomedical Image Segmenta-
+tion. In Medical Image Computing and Computer-assisted Intervention–MICCAI 2015: 18th International Conference,
+Munich, Germany, October 5-9, 2015, Proceedings, Part III 18, pages 234–241. Springer, 2015. doi: 10.1007/978-3-319-
+24574-4_28.
+[20] Christian Winkens, Florian Sattler, Veronika Adams, and Dietrich Paulus. HyKo: A Spectral Dataset for Scene
+Understanding. In Proceedings of the IEEE International Conference on Computer Vision Workshops (ICCVW), pages
+254–261, 2017. doi: 10.1109/ICCVW.2017.39.
+[21] Nick Theisen, Robin Bartsch, Dietrich Paulus, and Peer Neubert. HS3-Bench: A Benchmark and Strong Baseline for
+Hyperspectral Semantic Segmentation in Driving Scenarios. In 2024 IEEE/RSJ International Conference on Intelligent
+Robots and Systems (IROS), pages 5895–5901. IEEE, 2024. doi: 10.1109/IROS58592.2024.10801768.
+[22] Shaodi You, Erqi Huang, Shuaizhe Liang, Yongrong Zheng, Yunxiang Li, Fan Wang, Sen Lin, Qiu Shen, Xun Cao,
+Diming Zhang, et al. Hyperspectral City V1.0 Dataset and Benchmark. arXiv, 2019. doi: 10.48550/arXiv.1907.10270.
+[23] Yuxing Huang, Tianqi Ren, Qiu Shen, Ying Fu, and Shaodi You. HSICityV2: Urban Scene Understanding via Hyper-
+spectral Images, Jul 2021.
+[24] Jiarou Lu, Huafeng Liu, Yazhou Yao, Shuyin Tao, Zhenming Tang, and Jianfeng Lu. Hsi Road: A Hyper Spectral Image
+Dataset for Road Segmentation. In 2020 IEEE International Conference on Multimedia and Expo (ICME), pages 1–6. IEEE,
+2020. doi: 10.1109/ICME46284.2020.9102890.
+[25] K. Basterretxea, V. Martínez, J. Echanobe, J. Gutiérrez–Zaballa, and I. Del Campo. HSI-Drive: A Dataset for the
+Research of Hyperspectral Image Processing Applied to Autonomous Driving Systems. In 2021 IEEE Intelligent Vehicles
+Symposium (IV), pages 866–873, 2021. doi: 10.1109/IV48863.2021.9575298.
+[26] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe Franke,
+Stefan Roth, and Bernt Schiele. The Cityscapes Dataset for Semantic Urban Scene Understanding. In Proceedings of the
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016. doi: 10.1109/CVPR.2016.350.
+[27] Fisher Yu, Haofeng Chen, Xin Wang, Wenqi Xian, Yingying Chen, Fangchen Liu, Vashisht Madhavan, and Trevor Darrell.
 BDD100K: ADiverse Driving Dataset for Heterogeneous Multitask Learning. In Proceedings of the IEEE/CVF Conference
 on Computer Vision and Pattern Recognition (CVPR), pages 2636–2645, 2020. doi: 10.1109/CVPR42600.2020.00271.
 [28] Gabriel J Brostow, Julien Fauqueur, and Roberto Cipolla. Semantic Object Classes in Video: A High-definition Ground
@@ -1488,8 +1484,5 @@ Segmentation with Deep Learning for Autonomous Driving: A Survey. Applied Scienc
 [61] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian Schroff, and Hartwig Adam. Encoder-decoder with Atrous
 Separable Convolution for Semantic Image Segmentation. In Proceedings of the European Conference on Computer
 Vision (ECCV), pages 801–818, 2018. doi: 10.1007/978-3-030-01234-2_49.
-[62] Leonardo Dagum and Ramesh Menon. OpenMP: An Industry Standard API for Shared-memory Programming. IEEE
-Computational Science and Engineering, 5(1):46–55, 1998. doi: 10.1109/99.660313.
-[63] David R Butenhof. Programming with POSIX Threads. Addison-Wesley Professional, 1997.
-, Vol. 1, No. 1, Article . Publication date: July 2025.
+[62] Leonardo Dagum and Ramesh Menon. 
 
