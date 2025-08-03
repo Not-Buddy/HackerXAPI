@@ -34,3 +34,10 @@ CREATE TABLE pdf_embeddings (
     INDEX idx_pdf_filename (pdf_filename),
     INDEX idx_chunk_index (chunk_index)
 );
+
+
+
+To run the test.sh script u will need to install miniserve using the command
+
+
+"cargo install miniserve"
