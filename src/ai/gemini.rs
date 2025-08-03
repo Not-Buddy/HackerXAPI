@@ -115,7 +115,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
     
     // Stop measuring time
     let duration = start_time.elapsed();
-    println!("Raw Gemini response (status: {}):\n{}", status, raw_text);
+    // println!("Raw Gemini response (status: {}):\n{}", status, raw_text);
     println!("Time taken for Gemini API call and response: {:.2?}", duration);
 
     if !status.is_success() {
@@ -146,14 +146,14 @@ let clean_json_text = re
 // Parse it as a Vec<String> — each element is a JSON string, we want to de-escape those.
 let intermediate_array: Vec<String> = match serde_json::from_str(clean_json_text) {
 Ok(val) => val,
-Err(e) => {
-eprintln!("Failed to parse JSON array from response: {}\nRaw: {}", e, clean_json_text);
+Err(_e) => {
+// eprintln!("Failed to parse JSON array from response: {}\nRaw: {}", e, clean_json_text);
 vec![first_answer.clone()]
 }
 };
 
 // Now remove the escaped quotes from each string (unescape once more)
-let answers: Vec<String> = intermediate_array
+let _answers: Vec<String> = intermediate_array
 .into_iter()
 .map(|s| {
 match serde_json::from_str::<Value>(&s) {
@@ -165,7 +165,8 @@ _ => s,
 })
 .collect();
 
-println!("{:#?}", answers);
+//This is the raw response without parsing
+// println!("{:#?}", answers);
     // Parse answers
     let answers = parse_gemini_response_to_answers(&first_answer);
 
