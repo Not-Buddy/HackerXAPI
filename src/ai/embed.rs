@@ -261,6 +261,7 @@ pub async fn get_policy_chunk_embeddings(api_key: &str, pdf_filename: &str) -> R
 /// Calculate cosine similarity between two vectors
 fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
     if vec1.len() != vec2.len() {
+        println!("Vector lengths do not match. Relevancy: 0%");
         return 0.0;
     }
 
@@ -269,9 +270,13 @@ fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
     let magnitude2: f32 = vec2.iter().map(|v| v * v).sum::<f32>().sqrt();
 
     if magnitude1 == 0.0 || magnitude2 == 0.0 {
+        println!("One of the vectors has zero magnitude. Relevancy: 0%");
         0.0
     } else {
-        dot_product / (magnitude1 * magnitude2)
+        let relevancy = dot_product / (magnitude1 * magnitude2);
+        let percentage = (relevancy * 100.0).max(0.0); // Convert to percentage, ensure non-negative
+        println!("Content relevancy: {:.2}%", percentage);
+        relevancy
     }
 }
 
