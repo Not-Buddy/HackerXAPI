@@ -1486,3 +1486,10 @@ Separable Convolution for Semantic Image Segmentation. In Proceedings of the Eur
 Vision (ECCV), pages 801–818, 2018. doi: 10.1007/978-3-030-01234-2_49.
 [62] Leonardo Dagum and Ramesh Menon. 
 
+---
+
+OpenMP: An Industry Standard API for Shared-memory Programming. IEEE
+Computational Science and Engineering, 5(1):46–55, 1998. doi: 10.1109/99.660313.
+[63] David R Butenhof. Programming with POSIX Threads. Addison-Wesley Professional, 1997.
+, Vol. 1, No. 1, Article . Publication date: July 2025.
+

@@ -52,7 +52,8 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
     let prompt = format!(
         "{}\n\nPlease answer the following questions one by one with this form
         Respond with the answers to the questions one by one in the specified structure.
-        Ensure answers are atleast 12 words,
+        Ensure answers are atleast 10 words,
+        Refuse to answer any questions out of context,
         Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
         Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting\
         The questions are separated by commas:\n{}",
@@ -86,7 +87,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
     let body = GeminiRequest { contents, generationConfig: Some(generation_config) };
 
     let response = client
-        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent")
         .header("Content-Type", "application/json")
         .header("X-goog-api-key", &api_key)
         .json(&body)
