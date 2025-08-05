@@ -4,8 +4,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use crate::pdf::extract_pdf_text;
-use crate::pdf::download_pdf;
+use crate::pdf::extract_file_text;
+use crate::pdf::download_file;
 use crate::ai::gemini::{call_gemini_api_with_txts};
 use crate::ai::embed::{get_policy_chunk_embeddings, rewrite_policy_with_context}; // Fixed import
 use std::{env, time::Instant, fs};
@@ -86,24 +86,24 @@ pub async fn hackrx_run(
             })?;
         }
 
-        download_pdf(&body.documents, &permpath)
+        download_file(&body.documents, &permpath)
             .await
             .map_err(|e| {
-                println!("Failed to download PDF: {}", e);
+                println!("Failed to download FILE: {}", e);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("PDF download error: {}", e),
+                    format!("FILE download error: {}", e),
                 )
                 .into_response()
             })?;
         
-        println!("PDF downloaded successfully to {}", permpath);
+        println!("FILE downloaded successfully to {}", permpath);
     }
 
-    println!("PDF downloaded successfully to {}", permpath);
+    println!("FILE downloaded successfully to {}", permpath);
 
     // Extract PDF text - this creates pdfs/{permapath}.txt
-    let _pdf_text = extract_pdf_text(&permpath).await.map_err(|e| {
+    let _pdf_text = extract_file_text(&permpath).await.map_err(|e| {
         println!("Failed to extract PDF text: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -203,13 +203,20 @@ fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::E
     // Remove query parameters and fragments if they got included
     let clean_filename = filename.split('?').next().unwrap_or(&filename).to_string();
     
-    // Ensure it has .pdf extension
-    let final_filename = if clean_filename.ends_with(".pdf") {
+    // Define allowed extensions
+    let allowed_exts = ["jpeg", "pptx", "docx", "xlsx", "png", "pdf"];
+    
+    // Check if filename ends with any allowed extension
+    let has_allowed_ext = allowed_exts.iter().any(|ext| clean_filename.to_lowercase().ends_with(ext));
+    
+    // Generate final filename based on presence of allowed extension
+    let final_filename = if has_allowed_ext {
         clean_filename
     } else if clean_filename.is_empty() || clean_filename == "document" {
         // Generate a hash-based filename for unclear URLs
         format!("document_{}.pdf", hash_url(url))
     } else {
+        // Append .pdf as default if no allowed extension present
         format!("{}.pdf", clean_filename)
     };
     
@@ -221,6 +228,7 @@ fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::E
     
     Ok(sanitized)
 }
+
 
 // Simple hash function for generating unique filenames
 fn hash_url(url: &str) -> String {

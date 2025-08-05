@@ -12,7 +12,7 @@ use mysql::prelude::*;
 
 
 const CHUNK_SIZE: usize = 33000;
-const PARALLEL_REQS: usize = 1;
+const PARALLEL_REQS: usize = 50;
 const RELEVANT_CHUNKS: usize = 10;
 
 
