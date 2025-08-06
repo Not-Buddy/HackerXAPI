@@ -140,7 +140,7 @@ pub async fn hackrx_run(
     println!("Got chunk embeddings for {} chunks", chunk_embeddings.len());
     println!("Processing questions and preparing answers...");
 
-    // Rewrite policy.txt with relevant context for questions
+    // Rewrite filename.txt with relevant context for questions
     rewrite_policy_with_context(&api_key, &body.questions, &chunk_embeddings, pdf_filename)
         .await
         .map_err(|e| {
