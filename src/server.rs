@@ -56,12 +56,19 @@ pub async fn hackrx_run(
     // Generate filename from URL
     let filename = generate_filename_from_url(&body.documents).map_err(|e| {
         println!("Failed to generate filename from URL: {}", e);
+    
+        // Create error response in the same format as successful responses
+        let error_response = AnswersResponse {
+            answers: vec!["Sorry we do not support the file format that you uploaded".to_string()]
+        };
+    
         (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid document URL: {}", e),
+        StatusCode::BAD_REQUEST,
+        Json(error_response),
         )
         .into_response()
     })?;
+
 
     let permpath = format!("pdfs/{}", filename);
     println!("Target file path: {}", permpath);

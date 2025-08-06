@@ -1,5 +1,0 @@
-curl -X POST https://nhs-origin-resort-shoppers.trycloudflare.com/api/v1/hackrx/run \
--H "Content-Type: application/json" \
--H "Accept: application/json" \
--H "Authorization: Bearer febc0daceda23ebce03d324301d34ad3768494f0b52a39ffb4adaf083d8f9c5c" \
--d @payload.json
