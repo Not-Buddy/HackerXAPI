@@ -97,6 +97,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
         Please respond with the answers to the questions one by one in the specified structure.
         Refuse to answer any questions out of context,
         Answer like How would a human (best at the job) answer it?
+        Ensure answers are atleast 15 words,
         Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
         Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
         The questions are separated by commas:
