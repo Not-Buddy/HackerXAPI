@@ -203,6 +203,16 @@ fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::E
     // Remove query parameters and fragments if they got included
     let clean_filename = filename.split('?').next().unwrap_or(&filename).to_string();
     
+    // Check for unsupported file types first
+    let unsupported_exts = ["zip", "bin"];
+    let has_unsupported_ext = unsupported_exts.iter().any(|ext| {
+        clean_filename.to_lowercase().ends_with(&format!(".{}", ext))
+    });
+    
+    if has_unsupported_ext {
+        return Err("We don't support this file type. ZIP and BIN files are not supported.".into());
+    }
+    
     // Define allowed extensions
     let allowed_exts = ["jpeg", "pptx", "docx", "xlsx", "png", "pdf"];
     
@@ -228,6 +238,7 @@ fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::E
     
     Ok(sanitized)
 }
+
 
 
 // Simple hash function for generating unique filenames

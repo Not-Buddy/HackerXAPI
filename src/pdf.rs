@@ -10,6 +10,9 @@ use calamine::{open_workbook_auto, Reader, DataType, Range};
 use printpdf::*;
 use std::io::BufWriter;
 
+use crate::ocr::extract_text_from_pptx;
+
+
 
 pub type StdError = dyn std::error::Error + Send + Sync + 'static;
 
@@ -74,11 +77,21 @@ fn extract_file_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
             // Extract directly from PDF
             extract_pdf_text_sync(file_path)
         }
+        "jpeg" | "png" => {
+            // Extract text directly using OCR from images
+            crate::ocr::extract_text_with_ocrs(file_path)
+
+        }
+        "pptx" => {
+            // Extract PPTX pages as images first, then apply OCR
+            extract_text_from_pptx(file_path)
+        }
         _ => {
             Err(format!("Unsupported file type: .{}", ext).into())
         }
     }
 }
+
 
 // Rename your existing function to avoid conflicts
 fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
