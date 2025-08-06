@@ -1,23 +1,2 @@
-3.18 Room, Boarding and Nursing Expenses as provided by the Hospital /Nursing Home.
-Sum Insured Slabs
-Up to 5 lakhs
-7- 10 lakhs
-Above 10 lakhs
-3.19 Intensive Care Unit (ICU) Expenses as provided by the Hospital /Nursing Home.
-Sum Insured
-Slabs
-Up to 5 lakhs
-7- 10 lakhs
-Above 10 lakhs
-Limit per day
-Single Room up to 1% of Sum Insured. maximum up to Rs 5,000/- per day
-Single Room. maximum up to Rs. 10,000/- per day.
-Actuals Expenses.
-Limit per day
-Maximum up to Rs.10,000/- per day
-Maximum up to Rs, 20,000/- per day
-Actual expenses.
-3.20Surgeon, Anesthetist. Medical Practitioner. Consultants, Specialists Fees as per the limits of:
-SumInsured (subject to A & B below).
-
+No highly relevant context found for these questions.
 
