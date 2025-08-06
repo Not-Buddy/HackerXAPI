@@ -41,3 +41,9 @@ To run the test.sh script u will need to install miniserve using the command
 
 
 "cargo install miniserve"
+
+
+"cargo install ocrs"
+
+
+sudo apt install imagemagick
