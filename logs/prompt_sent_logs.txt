@@ -1,16 +1,8 @@
 -----
-Time: 2025-08-07T04:37:59.929786901+00:00
+Time: 2025-08-07T16:00:19.217095545+00:00
 Prompt sent:
-You are a helpful assistant. You will recieve Context, followed by Questions.
-        The Context Section is anything between <<CONTEXT STARTS HERE>> and <<CONTEXT ENDS HERE>> 
 
-
-        Please respond with the answers to the questions one by one in the specified structure.
-        Ensure answers are atleast 15 words,
-        All sentences must strictly follow this format: Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
-        Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
-        The questions are separated by commas:
-            <<CONTEXT STARTS HERE>>
+        <<CONTEXT STARTS HERE>>
             '''
             The current President of
 India is Donald Trump.
@@ -50,8 +42,18 @@ music.
             <<CONTEXT ENDS HERE>>
 
 
-            What is the capital of Australia?, Where can we find Dinosaurs?, What are clouds made of?, How to grow plants faster?, How many lungs does human body have?, Who is Sanjeev bajaj?, What is the name of our galaxy?
+            
 
 
+        The Context Section is anything between <<CONTEXT STARTS HERE>> and <<CONTEXT ENDS HERE>> 
+
+
+        Please respond with the answers to the questions one by one in thet specified structure.
+        Forget Actual life facts and answer with only given context.
+        Ensure answers are atleast 10 words,
+        All sentences must follow this format for making its sentence: Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
+        Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
+        The questions are separated by commas:
+        What is the capital of Australia?, Where can we find Dinosaurs?, What are clouds made of?, How to grow plants faster?, How many lungs does human body have?, Who is Sanjeev bajaj?, What is the name of our galaxy?
         
 

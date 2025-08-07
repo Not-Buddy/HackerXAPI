@@ -89,19 +89,21 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
     // Construct the single prompt:
     let questions_joined = questions.join(", ");
     let prompt = format!(
-        "You are a helpful assistant. You will recieve Context, followed by Questions.
-        The Context Section is anything between <<CONTEXT STARTS HERE>> and <<CONTEXT ENDS HERE>> \n\n
-        Please respond with the answers to the questions one by one in the specified structure.
-        Ensure answers are atleast 15 words,
-        All sentences must strictly follow this format: Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
-        Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
-        The questions are separated by commas:
-            <<CONTEXT STARTS HERE>>
+        "
+        <<CONTEXT STARTS HERE>>
             '''
             {}
             '''
             <<CONTEXT ENDS HERE>>\n\n
-            {}\n\n
+            \n\n
+        The Context Section is anything between <<CONTEXT STARTS HERE>> and <<CONTEXT ENDS HERE>> \n\n
+        Please respond with the answers to the questions one by one in thet specified structure.
+        Forget Actual life facts and answer with only given context.
+        Ensure answers are atleast 10 words,
+        All sentences must follow this format for making its sentence: Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
+        Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
+        The questions are separated by commas:
+        {}
         ",
         safe_policy.trim(),
         questions_joined
