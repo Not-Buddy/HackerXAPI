@@ -16,7 +16,7 @@ Temp README will make it more brief later
 System dependcies on java
 
 
-sudo apt-get install pdftk-java qpdf poppler-utils libglib2.0-dev libcairo2-dev libpoppler-glib-dev bc
+sudo apt-get install pdftk-java qpdf poppler-utils libglib2.0-dev libcairo2-dev libpoppler-glib-dev bc libreoffice
 
 
 
@@ -43,7 +43,7 @@ To run the test.sh script u will need to install miniserve using the command
 "cargo install miniserve"
 
 
-"cargo install ocrs"
+"$ cargo install ocrs-cli --locked"
 
 
 sudo apt install imagemagick
