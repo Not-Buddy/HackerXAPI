@@ -274,8 +274,8 @@ fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
         0.0
     } else {
         let relevancy = dot_product / (magnitude1 * magnitude2);
-        let percentage = (relevancy * 100.0).max(0.0); // Convert to percentage, ensure non-negative
-        println!("Content relevancy: {:.2}%", percentage);
+        //let percentage = (relevancy * 100.0).max(0.0); // Convert to percentage, ensure non-negative
+        //println!("Content relevancy: {:.2}%", percentage);
         relevancy
     }
 }

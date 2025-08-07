@@ -8,6 +8,8 @@ use chrono::Utc;
 use std::time::Instant;
 use serde_json;
 use regex::Regex;
+use uuid::Uuid;
+
 
 // Prevent prompt Injection
 
@@ -95,8 +97,6 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
         The Context Section is anything between <<CONTEXT STARTS HERE>> and <<CONTEXT ENDS HERE>> \n\n
         
         Please respond with the answers to the questions one by one in the specified structure.
-        Refuse to answer any questions out of context,
-        Answer like How would a human (best at the job) answer it?
         Ensure answers are atleast 15 words,
         Decision (e.g., approved or rejected), Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
         Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
@@ -142,13 +142,23 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
         generation_config: Some(generation_config) 
     };
 
+    let unique_id = Uuid::new_v4().to_string();
+    let url = format!(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?_={}", 
+    unique_id
+    );
+
     let response = client
-        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent")
-        .header("Content-Type", "application/json")
-        .header("X-goog-api-key", &api_key)
-        .json(&body)
-        .send()
-        .await?;
+    .post(&url)
+    .header("Content-Type", "application/json")
+    .header("X-goog-api-key", &api_key)
+    .header("Cache-Control", "no-cache, no-store, must-revalidate")
+    .header("Pragma", "no-cache")
+    .header("Expires", "0")
+    .json(&body)
+    .send()
+    .await?;
+
 
     let status = response.status();
     let raw_text = response.text().await?;
