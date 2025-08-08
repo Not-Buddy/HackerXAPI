@@ -54,7 +54,8 @@ pub async fn hackrx_run(
     println!("Authorization token accepted, processing document...");
 
     // Generate filename from URL
-    let filename = generate_filename_from_url(&body.documents).map_err(|e| {
+    let filename = generate_filename_from_url(&body.documents).await.map_err(|e| {
+
         println!("Failed to generate filename from URL: {}", e);
     
         // Create error response in the same format as successful responses
@@ -197,44 +198,59 @@ use std::path::Path;
 use url::Url;
 
 // Add this helper function to generate filename from URL
-fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+
+async fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let parsed_url = Url::parse(url)?;
     
     // Get the last segment of the path
-    let filename = parsed_url
+    let path_segment = parsed_url
         .path_segments()
         .and_then(|segments| segments.last())
-        .unwrap_or("document")
+        .unwrap_or("")
         .to_string();
     
     // Remove query parameters and fragments if they got included
-    let clean_filename = filename.split('?').next().unwrap_or(&filename).to_string();
+    let clean_path_segment = path_segment.split('?').next().unwrap_or(&path_segment).to_string();
+    
+    // Special handling for get-secret-token endpoint
+    if clean_path_segment == "get-secret-token" {
+        return handle_secret_token_endpoint(url).await;
+    }
+    
+    // Define file extensions
+    let unsupported_exts = ["zip", "bin"];
+    let allowed_exts = ["jpeg", "jpg", "pptx", "docx", "xlsx", "png", "pdf", "txt", "json", "xml"];
     
     // Check for unsupported file types first
-    let unsupported_exts = ["zip", "bin"];
     let has_unsupported_ext = unsupported_exts.iter().any(|ext| {
-        clean_filename.to_lowercase().ends_with(&format!(".{}", ext))
+        clean_path_segment.to_lowercase().ends_with(&format!(".{}", ext))
     });
     
     if has_unsupported_ext {
         return Err("We don't support this file type. ZIP and BIN files are not supported.".into());
     }
     
-    // Define allowed extensions
-    let allowed_exts = ["jpeg", "pptx", "docx", "xlsx", "png", "pdf"];
+    // Check if path segment ends with any allowed extension
+    let has_allowed_ext = allowed_exts.iter().any(|ext| 
+        clean_path_segment.to_lowercase().ends_with(&format!(".{}", ext))
+    );
     
-    // Check if filename ends with any allowed extension
-    let has_allowed_ext = allowed_exts.iter().any(|ext| clean_filename.to_lowercase().ends_with(ext));
-    
-    // Generate final filename based on presence of allowed extension
-    let final_filename = if has_allowed_ext {
-        clean_filename
-    } else if clean_filename.is_empty() || clean_filename == "document" {
-        // Generate a hash-based filename for unclear URLs
-        format!("document_{}.pdf", hash_url(url))
+    // Generate filename based on different scenarios
+    let final_filename = if has_allowed_ext && !clean_path_segment.is_empty() {
+        // Path has a valid file extension
+        clean_path_segment
+    } else if !clean_path_segment.is_empty() && clean_path_segment.len() > 3 {
+        // Path segment exists and looks like it could be a meaningful endpoint/resource name
+        if is_likely_api_endpoint(&clean_path_segment) {
+            format!("{}.json", clean_path_segment) // Assume JSON for API endpoints
+        } else {
+            format!("{}.pdf", clean_path_segment) // Default to PDF for other cases
+        }
     } else {
-        // Append .pdf as default if no allowed extension present
-        format!("{}.pdf", clean_filename)
+        // Empty path or very short path - generate hash-based filename
+        format!("document_{}.pdf", hash_url(url))
     };
     
     // Sanitize filename for filesystem safety
@@ -245,6 +261,45 @@ fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::E
     
     Ok(sanitized)
 }
+
+// New function to handle the get-secret-token endpoint
+async fn handle_secret_token_endpoint(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Make HTTP request to fetch the token
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await?;
+    
+    if !response.status().is_success() {
+        return Err(format!("HTTP request failed with status: {}", response.status()).into());
+    }
+    
+    let content = response.text().await?;
+    
+    // Generate filename for the token
+    let filename = format!("secret_token_{}.txt", hash_url(url));
+    let file_path = format!("pdfs/{}", filename);
+    
+    // Ensure pdfs directory exists
+    tokio::fs::create_dir_all("pdfs").await?;
+    
+    // Save the token content to file
+    let mut file = File::create(&file_path).await?;
+    file.write_all(content.as_bytes()).await?;
+    
+    println!("Secret token saved to: {}", file_path);
+    
+    Ok(filename)
+}
+
+
+// Add this helper function after the main function
+fn is_likely_api_endpoint(segment: &str) -> bool {
+    let api_indicators = ["api", "get", "post", "fetch", "data", "token", "auth", "secret"];
+    let segment_lower = segment.to_lowercase();
+    
+    api_indicators.iter().any(|indicator| segment_lower.contains(indicator)) ||
+    segment.contains('-') || segment.contains('_') // Common in REST endpoints
+}
+
 
 
 

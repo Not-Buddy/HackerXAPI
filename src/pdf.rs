@@ -86,6 +86,10 @@ fn extract_file_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
             // Extract PPTX pages as images first, then apply OCR
             extract_text_from_pptx(file_path)
         }
+
+        "txt" => {
+            extract_token_from_text(file_path)
+        }
         _ => {
             Err(format!("Unsupported file type: .{}", ext).into())
         }
@@ -541,4 +545,17 @@ pub async fn extract_file_text(file_path: &str) -> Result<String, Box<StdError>>
     tokio::task::spawn_blocking(move || extract_file_text_sync(&file_path)).await?
 }
 
+
+fn extract_token_from_text(filepath: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let content = fs::read_to_string(filepath)?;
+    
+    // Look for hexadecimal strings that are 32+ characters (typical for tokens)
+    let re = regex::Regex::new(r"[a-fA-F0-9]{32,}")?;
+    
+    if let Some(token) = re.find(&content) {
+        Ok(token.as_str().to_string())
+    } else {
+        Err("No token found in the HTML content".into())
+    }
+}
 
