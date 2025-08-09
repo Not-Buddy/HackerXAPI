@@ -28,6 +28,8 @@ pub async fn download_file(url: &str, file_path: &str) -> Result<(), Box<dyn std
     
     // Extract filename from path
     let filename = path.split('/').last().unwrap_or("");
+
+    
     
     // Extract the file extension from filename (not the full URL)
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
