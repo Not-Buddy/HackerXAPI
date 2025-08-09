@@ -1,10 +1,10 @@
-# HackerXAPI 🚀
+# HackerXAPI - Built for HackRx 🚀
 
-HackerXAPI is a sophisticated, production-ready system built in Rust that combines high-performance asynchronous processing, advanced AI/ML integration with Gemini, multi-format document handling, and enterprise-grade security practices.
+This is a production-ready system built in Rust that combines high-performance asynchronous processing, AI/ML integration with the Gemini API, multi-format document handling, and security practices.
 
 ## 🏗️ System Architecture Overview
 
-Our HackerXAPI implements a multi-layered, event-driven architecture with impressive technical sophistication.
+Our API implements a multi-layered architecture to tackle the problem statement and all test cases.
 
 ---
 
@@ -44,7 +44,7 @@ Our HackerXAPI implements a multi-layered, event-driven architecture with impres
 
 * **Intelligent Document Processing**: Handles a wide array of file types (`PDF`, `DOCX`, `XLSX`, `PPTX`, `JPEG`, `PNG`, `TXT`) with a robust fallback chain.
 * **High-Performance AI**: Leverages the Gemini API with optimized chunking, parallel processing, and smart context filtering for fast, relevant responses.
-* **Enterprise-Grade Security**: Features multi-layer security, including Bearer token authentication, extensive prompt injection sanitization, and parameterized SQL queries.
+* **Enterprise-Grade Security**: Features multi-layer security, including extensive prompt injection sanitization, and parameterized SQL queries.
 * **Scalable Architecture**: Built with a stateless design, `tokio` for async operations, and CPU-aware parallelization for horizontal scaling.
 * **Interactive Management**: Includes a menu-driven CLI for easy server management, status monitoring, and graceful shutdowns.
 
@@ -152,17 +152,14 @@ fn sanitize_policy(content: &str) -> String {
 
 * **Structured Output**: Enforces a JSON schema for consistent and predictable LLM responses.
 * **Cache Busting**: Uses UUIDs to ensure request uniqueness where needed.
-* **Response Validation**: Implements multi-layer JSON parsing with robust error handling.
+* **Response Validation**: Implements multi-layer JSON parsing.
 * **Prompt Engineering**: Constructs context-aware prompts for more accurate results.
 
 ---
 
 ## 📄 Document Processing Pipeline
 
-### `pdf.rs` - Multi-Format Document Engine
-
-This component's document processing is remarkably comprehensive.
-
+The system will support the following files for text extraction:
 **File Type Support Matrix:**
 ```rust
 match ext.as_str() {
@@ -181,7 +178,7 @@ match ext.as_str() {
 * **Chunk-based PDF Processing**: Intelligently splits large PDFs into chunks to be processed in parallel across CPU cores.
 * **Tool Fallback Chain**: Implements a resilient processing strategy, trying `pdftk`, then `qpdf`, and finally falling back to estimation if needed.
 
-### Advanced PDF Processing
+### PDF Processing
 ```rust
 let page_ranges: Vec<(usize, usize)> = (0..num_cores)
     .map(|i| {
@@ -191,9 +188,9 @@ let page_ranges: Vec<(usize, usize)> = (0..num_cores)
     })
     .collect();
 ```
-### `ocr.rs` - Optical Character Recognition
+### Optical Character Recognition
 
-This component's OCR implementation shows sophisticated image processing.
+The system also uses OCR to parse text from images or `pptx` files
 
 **Multi-Tool Pipeline:**
 * **Primary**: `ImageMagick` direct conversion.
@@ -210,8 +207,6 @@ This component's OCR implementation shows sophisticated image processing.
 
 ## 🌐 Server Architecture & API Design
 
-### `server.rs` - RESTful API Gateway
-
 The server implements intelligent request routing and security.
 
 **Security Middleware:**
@@ -222,11 +217,10 @@ if auth.is_none() || !auth.unwrap().starts_with("Bearer ") {
     return Err(StatusCode::UNAUTHORIZED);
 }
 ```
-**Smart File Handling:**
+
 * **URL-to-Filename Generation**: Intelligently detects file types from URLs.
-* **Special Endpoint Handling**: Dedicated logic for endpoints like `get-secret-token`.
-* **File Existence Checking**: Avoids redundant downloads by checking for existing files first.
-* **Dynamic Response Routing**: Implements contest detection logic for special routing.
+* **Special Endpoint Handling**: Dedicated logic for handling endpoints in documents.
+* **File Existence Checking**: Avoids redundant downloads by checking for existing vectors in the database first.
 
 **Advanced Features:**
 * **Final Challenge Detection**: Special handling for contest-specific files.
@@ -235,9 +229,8 @@ if auth.is_none() || !auth.unwrap().starts_with("Bearer ") {
 
 ---
 
-### `main.rs` - Interactive CLI Interface
 
-This module provides a user-friendly, menu-driven interface for application management.
+This module provides a user-friendly, menu-driven interface for managing the server.
 
 **Menu-Driven Architecture:**
 * **Graceful Shutdown**: Handles `Ctrl+C` for proper cleanup before exiting.
@@ -272,7 +265,7 @@ static DB_POOL: Lazy<Pool> = Lazy::new(|| {
 **Performance Optimizations:**
 * **Batch Insertions**: Commits multiple embeddings in a single transaction for efficiency.
 * **Index Strategy**: Uses dedicated indexes like `idx_pdf_filename` and `idx_chunk_index` for fast lookups.
-* **JSON Storage**: Leverages MySQL's native `JSON` data type for optimal embedding storage and retrieval.
+* **JSON Storage**: Uses MySQL's native `JSON` data type for optimal embedding storage and retrieval.
 
 ### Memory Management & Safety
 **Rust Best Practices:**
@@ -286,10 +279,9 @@ static DB_POOL: Lazy<Pool> = Lazy::new(|| {
 ## 🛡️ Security & Reliability Features
 
 ### Multi-Layer Security
-* **Authentication**: Validates Bearer tokens for API access.
-* **Input Sanitization**: Defends against over **22 known prompt injection patterns**.
+* **Input Sanitization**: Defends against prompt injection attacks.
 * **File Type Validation**: Uses a whitelist-based approach for processing file types.
-* **Payload Limits**: Enforces request limits (e.g., 35KB on embeddings) to prevent abuse.
+* **Payload Limits**: Enforces request limits (e.g., 35KB on embeddings) for staying within API limits. This can be removed for a big performance gain.
 * **SQL Injection Prevention**: Exclusively uses parameterized queries to protect the database.
 
 ### Error Handling Strategy
@@ -303,39 +295,38 @@ static DB_POOL: Lazy<Pool> = Lazy::new(|| {
 ## 📊 Performance Characteristics
 
 ### Scalability Metrics
-* **Concurrent Embeddings**: Processes up to **50 parallel requests**.
+* **Concurrent Embeddings**: Processes up to **50 parallel requests** This is of course, limited by the API rate limits. Removing it will improve performance greatly.
 * **Chunk Processing**: Utilizes CPU-core optimized parallel processing for large PDFs.
-* **Database & Caching**: Leverages connection pooling and file caching to maximize throughput.
+* **Database & Caching**: Leverages connection pooling and file caching to maximize token use and be as efficient as possible.
 
 ### Quality Thresholds
 * **Relevance Filter**: A `0.5` cosine similarity score is the minimum for context retrieval.
-* **Context Window**: Uses the **top 10** chunks to provide optimal context to the LLM.
+* **Context Window**: Uses the **top 10** chunks to provide optimal context to the LLM. A higher context window increases accuracy even further.
 * **OCR Quality**: Balances speed and accuracy with a `150 DPI` setting.
 
 ---
 
 ## 🎯 Production-Ready Features
 
-* **Stateless Design**: Each request is independent, enabling easy horizontal scaling.
-* **Observability**: Includes comprehensive logging and timing measurements.
+* **Stateless Design**: Each request is independent, making it easy to scale and multithread.
+* **Observability**: Includes comprehensive logging and timing measurements for every case.
 * **Configuration**: All configuration is managed via environment variables for easy deployment.
 * **Resource Management**: Temporary files are cleaned up automatically via the RAII pattern.
 * **API Standards**: Adheres to RESTful design principles with proper HTTP semantics.
 
 ---
 
-## 🏆 Technical Innovation Highlights
+## What is Unique here then?
 
-### Unique Architecture Decisions
-* **Hybrid Document Processing**: An intelligent chain of tools with fallbacks ensures high-availability processing.
-* **Context-Aware Embedding**: Combines multiple questions into a single, efficient embedding.
-* **Interactive CLI**: Provides a menu-driven interface for easy server management.
-* **Contest Logic Integration**: Implements special handling for competition-specific scenarios.
-* **Security-First Design**: Features extensive, proactive prompt injection protection.
+* **Built in Rust**: We chose rust to make the API as fast as possible.
+* **Persistent Vector Store**: The MySQL Database is perfect for company level usage of the system, where a document is queried constantly by both employees and clients.
+* **Handles all Documents**: A chain of tools with fallbacks ensures that the system handles as many document types as possible.
+* **Context-Aware Embedding**: Combines multiple questions into a single embedding for token efficiency. 
+* **Prompt Injection Protecton**: Features prompt injection protection.
 
 > This project represents a sophisticated, production-ready system that successfully combines modern Rust async programming, AI/ML vector processing, multi-format document handling, enterprise security practices, and high-performance parallel processing.
 -----
-## 🚀 Quick Start
+## Get It Running
 
 ### 1\. Install Rust
 
@@ -399,7 +390,7 @@ cargo run
 
 ### 7\. Testing
 
-The repository includes several scripts to test the API with different document types:
+The repository includes three scripts with  various payloads to test the API with different document types:
 
 ```bash
 ./test.sh
@@ -420,37 +411,3 @@ The repository includes several scripts to test the API with different document 
 <!-- end list -->
 
 ```
-```
-
-Then, populate your `.env` file with the database connection string and your Gemini API key:
-
-```ini
-MYSQL_CONNECTION=mysql://username:password@localhost:3306/your_database
-GEMINI_KEY=your_gemini_api_key
-```
-
-### 6\. Run the Application
-
-```bash
-cargo run
-```
-
-### 7\. Testing
-
-The repository includes several scripts to test the API with different document types:
-
-```bash
-./test.sh
-./sim.sh
-./simr4.sh
-```
-
------
-
-## 🔧 Requirements
-
-  * Rust (latest stable)
-  * MySQL database
-  * Google Gemini API key
-  * System packages for document processing (listed in step 2)
-  * OCR tools for image text extraction (listed in step 3)
