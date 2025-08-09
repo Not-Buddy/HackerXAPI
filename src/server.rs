@@ -9,6 +9,7 @@ use crate::pdf::download_file;
 use crate::ai::gemini::{call_gemini_api_with_txts};
 use crate::ai::embed::{get_policy_chunk_embeddings, rewrite_policy_with_context}; // Fixed import
 use std::{env, time::Instant, fs};
+use crate::final_challenge::execute_final_challenge;
 
 #[derive(Deserialize)]
 pub struct QuestionRequest {
@@ -49,27 +50,45 @@ pub async fn hackrx_run(
     }
 
     println!("Authorization token accepted, starting PDF download...");
-
-
     println!("Authorization token accepted, processing document...");
 
     // Generate filename from URL
     let filename = generate_filename_from_url(&body.documents).await.map_err(|e| {
-
         println!("Failed to generate filename from URL: {}", e);
-    
+        
         // Create error response in the same format as successful responses
         let error_response = AnswersResponse {
             answers: vec!["Sorry we do not support the file format that you uploaded".to_string()]
         };
-    
+        
         (
-        StatusCode::BAD_REQUEST,
-        Json(error_response),
+            StatusCode::BAD_REQUEST,
+            Json(error_response),
         )
         .into_response()
     })?;
 
+    // **NEW: Check if this is the final challenge file**
+    if filename == "FinalRound4SubmissionPDF.pdf" {
+        println!("🎯 Final Challenge detected! Executing FinalChallenge.rs...");
+        
+        match execute_final_challenge().await {
+            Ok(flight_number) => {
+                let challenge_response = AnswersResponse {
+                    answers: vec![format!("Flight Number: {}", flight_number)]
+                };
+                println!("Request processed successfully in {:?}. Sending final challenge response.", start_time.elapsed());
+                return Ok(Json(challenge_response));
+            }
+            Err(e) => {
+                println!("Final challenge execution failed: {}", e);
+                let error_response = AnswersResponse {
+                    answers: vec![format!("Final challenge failed: {}", e)]
+                };
+                return Ok(Json(error_response));
+            }
+        }
+    }
 
     let permpath = format!("pdfs/{}", filename);
     println!("Target file path: {}", permpath);
@@ -132,9 +151,9 @@ pub async fn hackrx_run(
     })?;
 
     let pdf_filename = std::path::Path::new(&permpath)
-    .file_stem()
-    .and_then(|name| name.to_str())
-    .unwrap_or("document");
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document");
 
     let chunk_embeddings = get_policy_chunk_embeddings(&api_key, pdf_filename).await.map_err(|e| {
         println!("Failed to get policy chunk embeddings: {}", e);
@@ -162,12 +181,11 @@ pub async fn hackrx_run(
 
     println!("Policy file rewritten with question contexts");
 
-
     // Generate the contextfiltered filename based on the PDF filename
     let pdf_filename = std::path::Path::new(&permpath)
-    .file_stem()
-    .and_then(|name| name.to_str())
-    .unwrap_or("document");
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document");
     let contextfiltered_filename = format!("pdfs/{}_contextfiltered.txt", pdf_filename);
 
     // Now call your answer function with the rewritten context
@@ -193,6 +211,7 @@ pub async fn hackrx_run(
 
     Ok(Json(answers_response))
 }
+
 
 use std::path::Path;
 use url::Url;

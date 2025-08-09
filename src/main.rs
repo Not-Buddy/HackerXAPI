@@ -2,6 +2,7 @@ mod server;
 mod pdf;
 mod ai;
 mod ocr;
+mod final_challenge;
 
 use axum::{
     routing::post,

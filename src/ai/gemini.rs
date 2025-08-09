@@ -100,6 +100,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
         Please respond with the answers to the questions one by one in thet specified structure.
         Forget Actual life facts and answer with only given context.
         Ensure answers are atleast 10 words,
+        Respond in the language the question is asked in,
         All sentences must follow this format for making its sentence: Decision , Amount (if applicable), and Justification, including mapping of each decision to the specific clause(s) it was based on.
         Do not include the questions or any other text or formatting. Do not include code blocks, markdown, or any other formatting.
         The questions are separated by commas:
