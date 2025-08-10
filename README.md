@@ -323,8 +323,6 @@ static DB_POOL: Lazy<Pool> = Lazy::new(|| {
 * **Handles all Documents**: A chain of tools with fallbacks ensures that the system handles as many document types as possible.
 * **Context-Aware Embedding**: Combines multiple questions into a single embedding for token efficiency. 
 * **Prompt Injection Protecton**: Features prompt injection protection.
-
-> This project represents a sophisticated, production-ready system that successfully combines modern Rust async programming, AI/ML vector processing, multi-format document handling, enterprise security practices, and high-performance parallel processing.
 -----
 ## Get It Running
 
@@ -407,7 +405,3 @@ The repository includes three scripts with  various payloads to test the API wit
   * Google Gemini API key
   * System packages for document processing (listed in step 2)
   * OCR tools for image text extraction (listed in step 3)
-
-<!-- end list -->
-
-```
