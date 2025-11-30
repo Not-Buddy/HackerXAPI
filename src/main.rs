@@ -10,7 +10,6 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing_subscriber;
 use tokio::sync::oneshot;
 use std::io::{self, Write};
 

@@ -23,7 +23,7 @@ pub struct AnswersResponse {
 }
 
 pub async fn answer_questions(_pdf_text: &str, questions: &[String], pdf_filename: &str) -> Result<AnswersResponse, Box<dyn std::error::Error>> {
-    let answers = call_gemini_api_with_txts(&questions, pdf_filename).await?;
+    let answers = call_gemini_api_with_txts(questions, pdf_filename).await?;
     Ok(AnswersResponse { answers })
 }
 
@@ -226,7 +226,7 @@ async fn generate_filename_from_url(url: &str) -> Result<String, Box<dyn std::er
     // Get the last segment of the path
     let path_segment = parsed_url
         .path_segments()
-        .and_then(|segments| segments.last())
+        .and_then(|mut segments| segments.next_back())
         .unwrap_or("")
         .to_string();
     

@@ -83,7 +83,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
 
     let generation_config = GenerationConfig {
         response_mime_type: "application/json".to_string(),
-        response_schema: response_schema,
+        response_schema,
     };
 
     // Construct the single prompt:
@@ -190,7 +190,7 @@ pub async fn call_gemini_api_with_txts(questions: &[String], pdf_filename: &str)
         inner_json.get("answers")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_else(|| vec![])
+            .unwrap_or_default()
     } else {
         vec![]
     };
