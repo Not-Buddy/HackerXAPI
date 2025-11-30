@@ -1,5 +1,4 @@
 // src/final_challenge.rs
-use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -172,11 +171,10 @@ fn extract_flight_code(response: &str) -> Result<String, Box<dyn std::error::Err
     
     // Look for quoted strings that might be flight codes
     let quoted_regex = regex::Regex::new(r#""([A-Z0-9]{4,8})""#).unwrap();
-    if let Some(captures) = quoted_regex.captures(response) {
-        if let Some(flight_code) = captures.get(1) {
+    if let Some(captures) = quoted_regex.captures(response)
+        && let Some(flight_code) = captures.get(1) {
             return Ok(flight_code.as_str().to_string());
         }
-    }
     
     // If all parsing fails, return the raw response trimmed
     Ok(response.trim().to_string())

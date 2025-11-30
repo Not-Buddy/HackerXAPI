@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::process::Command;
 use std::fs;
 use std::path::Path;
-use num_cpus;
 use docx_rs::*;
 use calamine::{open_workbook_auto, Reader, DataType, Range};
 use printpdf::*;
@@ -27,7 +26,7 @@ pub async fn download_file(url: &str, file_path: &str) -> Result<(), Box<dyn std
     let path = parsed_url.path();
     
     // Extract filename from path
-    let filename = path.split('/').last().unwrap_or("");
+    let filename = path.split('/').next_back().unwrap_or("");
 
     
     
@@ -142,7 +141,7 @@ fn extract_pdf_text_sync(file_path: &str) -> Result<String, Box<StdError>> {
 
     // Get number of available CPU cores
     let num_cores = num_cpus::get();
-    let pages_per_chunk = (total_pages + num_cores - 1) / num_cores; // Ceiling division
+    let pages_per_chunk = total_pages.div_ceil(num_cores); // Ceiling division
     println!("Total pages: {}, CPU cores: {}, pages per chunk: {}", total_pages, num_cores, pages_per_chunk);
 
     // Create page ranges for all available cores
@@ -203,11 +202,10 @@ fn get_pdf_page_count_accurate(file_path: &str) -> Result<usize, Box<StdError>> 
     {
         let output_str = String::from_utf8_lossy(&output.stdout);
         for line in output_str.lines() {
-            if line.starts_with("NumberOfPages:") {
-                if let Ok(pages) = line.split(':').nth(1).unwrap_or("0").trim().parse::<usize>() {
+            if line.starts_with("NumberOfPages:")
+                && let Ok(pages) = line.split(':').nth(1).unwrap_or("0").trim().parse::<usize>() {
                     return Ok(pages);
                 }
-            }
         }
     }
 
@@ -218,11 +216,10 @@ fn get_pdf_page_count_accurate(file_path: &str) -> Result<usize, Box<StdError>> 
     {
         let output_str = String::from_utf8_lossy(&output.stdout);
         for line in output_str.lines() {
-            if line.starts_with("Pages:") {
-                if let Ok(pages) = line.split_whitespace().nth(1).unwrap_or("0").parse::<usize>() {
+            if line.starts_with("Pages:")
+                && let Ok(pages) = line.split_whitespace().nth(1).unwrap_or("0").parse::<usize>() {
                     return Ok(pages);
                 }
-            }
         }
     }
 
@@ -521,12 +518,11 @@ fn wrap_text(text: &str, max_width: f32, _font_size: f32) -> Vec<String> {
         let mut current_line = String::new();
         
         for word in text.split_whitespace() {
-            if current_line.len() + word.len() + 1 > chars_per_line {
-                if !current_line.is_empty() {
+            if current_line.len() + word.len() + 1 > chars_per_line
+                && !current_line.is_empty() {
                     lines.push(current_line);
                     current_line = String::new();
                 }
-            }
             
             if !current_line.is_empty() {
                 current_line.push(' ');
