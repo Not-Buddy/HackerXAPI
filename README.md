@@ -1,58 +1,60 @@
-# HackerXAPI - Built for HackRx 🚀
 
-This is a production-ready system built in Rust that combines high-performance asynchronous processing, AI/ML integration with the Gemini API, multi-format document handling, and security practices.
+***
 
-## 🏗️ System Architecture Overview
+# HackerXAPI - Built for HackRx
 
-Our API implements a multi-layered architecture to tackle the problem statement and all test cases.
+## System Architecture Overview
+
+The API implements a multi-layered architecture designed to systematically address complex problem statements and satisfy comprehensive test cases.
 
 ---
 
-## Architecture
+## Architecture Diagram
 ```text
 +===================================================+
-|           main.rs (Interactive CLI)               |
+|            main.rs (Interactive CLI)              |
 +---------------------------------------------------+
 |            server.rs (API Gateway)                |
 +---------------------------------------------------+
 |        final_challenge.rs (Contest Logic)         |
 +---------------------------------------------------+
-|      ai/embed.rs (Vector Database Layer)          |
-|      ai/gemini.rs (LLM Intelligence Layer)        |
+|        ai/embed.rs (Vector Database Layer)        |
+|        ai/gemini.rs (LLM Intelligence Layer)      |
 +---------------------------------------------------+
-|      pdf.rs + ocr.rs (Processing Pipeline)        |
+|        pdf.rs + ocr.rs (Processing Pipeline)      |
 +---------------------------------------------------+
 |          MySQL (Persistent Vector Store)          |
 +===================================================+
 ```
+```text
+## HackerXAPI File Structure:
+
+├── main.rs (Interactive CLI) 
+├── server.rs (API Gateway) 
+├── final_challenge.rs (Contest Logic) 
+├── AI Layer: 
+│   ├── embed.rs (Vector Database Layer) 
+│   └── gemini.rs (LLM Intelligence Layer) 
+├── Processing Layer: 
+│   ├── pdf.rs (Document Processing) 
+│   └── ocr.rs (OCR Pipeline) 
+└── MySQL (Persistent Vector Store) 
 ```
-## HackerXAPI Architecture:
 
-├── main.rs (Interactive CLI) <br />
-├── server.rs (API Gateway) <br />
-├── final_challenge.rs (Contest Logic) <br />
-├── AI Layer: <br />
-│   ├── embed.rs (Vector Database Layer) <br />
-│   └── gemini.rs (LLM Intelligence Layer) <br />
-├── Processing Layer: <br />
-│   ├── pdf.rs (Document Processing) <br />
-│   └── ocr.rs (OCR Pipeline) <br />
-└── MySQL (Persistent Vector Store) <br />
-```
+## Features
 
-## ✨ Features
-
-* **Intelligent Document Processing**: Handles a wide array of file types (`PDF`, `DOCX`, `XLSX`, `PPTX`, `JPEG`, `PNG`, `TXT`) with a robust fallback chain.
-* **High-Performance AI**: Leverages the Gemini API with optimized chunking, parallel processing, and smart context filtering for fast, relevant responses.
-* **Enterprise-Grade Security**: Features multi-layer security, including extensive prompt injection sanitization, and parameterized SQL queries.
-* **Scalable Architecture**: Built with a stateless design, `tokio` for async operations, and CPU-aware parallelization for horizontal scaling.
-* **Interactive Management**: Includes a menu-driven CLI for easy server management, status monitoring, and graceful shutdowns.
+* **Intelligent Document Processing**: Handles a wide array of file types (`PDF`, `DOCX`, `XLSX`, `PPTX`, `JPEG`, `PNG`, `TXT`) leveraging a robust tool fallback chain.
+* **High-Performance AI**: Utilizes the Gemini API with optimized chunking, parallel processing, and smart context filtering for rapid, relevant responses.
+* **Enterprise-Grade Security**: Features multi-layer security, including extensive prompt injection sanitization and parameterized SQL queries.
+* **Scalable Architecture**: Built with a stateless design, `tokio` for asynchronous operations, and CPU-aware parallelization for horizontal scaling.
+* **Interactive Management**: Includes a menu-driven CLI for streamlined server management, status monitoring, and graceful shutdowns.
 
 ---
 
-## 🏛️ Architecture Overview
+## Architecture Flowchart
 
-The system is designed as a series of specialized layers, from the user-facing API and CLI down to the persistent database storage.
+The system is designed as a series of specialized layers, operating from the user-facing API and CLI down to persistent database storage.
+
 ```mermaid
 flowchart TD
     A[CLI Menu] -->|Start Server| B[Axum Server :8000]
@@ -94,30 +96,26 @@ flowchart TD
     P -.->|API| GEMINI[Gemini API]
 ```
 
------
+---
 
-# 🔧 Core Components
+# Core Components
 
-## 🧠 `ai` - AI & Embedding Layer
+## `ai` - AI & Embedding Layer
 
-This layer handles all interactions with the AI model and vector embeddings, featuring performance optimizations and smart context filtering.
+This layer manages all interactions with the AI model and vector embeddings, featuring performance optimizations and context filtering mechanisms.
 
 ### Performance Optimizations
 
-* **Chunking Strategy**: Text is split into `33,000` character chunks, which is optimal for the Gemini API.
-* **Parallel Processing**: Handles up to `50` concurrent requests using `futures::stream` for high throughput.
-* **Database Caching**: Caches embedding vectors in MySQL to avoid redundant and costly API calls.
-* **Batch Operations**: Uses functions like `batch_store_pdf_embeddings` for efficient bulk database insertions.
+* **Chunking Strategy**: Text is split into 33,000-character chunks, calibrated for optimal performance with the Gemini API.
+* **Parallel Processing**: Capable of handling up to 50 concurrent requests using `futures::stream` for high throughput.
+* **Database Caching**: Caches embedding vectors in MySQL using the native `JSON` data type to eliminate redundant API calls.
+* **Batch Operations**: Employs functions such as `batch_store_pdf_embeddings` for highly efficient bulk database insertions.
 
 ### Smart Context Filtering
 
-* **Top-K Retrieval**: Fetches the top `10` most relevant document chunks for any given query.
-* **Similarity Threshold**: Enforces a minimum relevance score of `0.5` (cosine similarity) to ensure context quality.
-* **Combined Query Embedding**: Creates a single, more effective embedding when multiple user questions are asked at once.
-
-### Enterprise-Level Security (`gemini.rs`)
-
-* **Prompt Injection Defense**: Proactively sanitizes all user input against a list of over 22 known prompt injection patterns to protect the LLM.
+* **Top-K Retrieval**: Retrieves the 10 most relevant document chunks for any submitted query.
+* **Similarity Threshold**: Enforces a minimum cosine similarity relevance score of 0.5 to ensure the quality of provided context.
+* **Combined Query Embedding**: Generates a consolidated, unified embedding when users submit multiple simultaneous questions.
 
 ### Advanced Vector Operations
 ```rust
@@ -130,24 +128,11 @@ fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f32 {
 }
 ```
 
-### Performance Optimizations
-
-* **Chunking Strategy**: Text is split into `33,000` character chunks, which is optimal for the Gemini API.
-* **Parallel Processing**: Handles up to `50` concurrent requests using `futures::stream`.
-* **Database Caching**: Caches embedding vectors in MySQL using the native `JSON` data type.
-* **Batch Operations**: Uses functions like `batch_store_pdf_embeddings` for high-performance bulk database insertions.
-
-### Smart Context Filtering
-
-* **Top-K Retrieval**: Fetches the `10` most relevant document chunks for any given query.
-* **Similarity Threshold**: Enforces a minimum relevance score of `0.5` (cosine similarity) to ensure context quality.
-* **Combined Query Embedding**: Creates a single, more effective embedding when multiple user questions are asked at once.
-
 ---
 
 ## `gemini.rs` - LLM Integration Layer
 
-This component showcases enterprise-level security and reliability in its integration with the Gemini model.
+This component establishes enterprise-level security and reliability protocols for integration with the Gemini model.
 
 ### Security Features
 ```rust
@@ -164,16 +149,17 @@ fn sanitize_policy(content: &str) -> String {
 
 ### Advanced API Patterns
 
-* **Structured Output**: Enforces a JSON schema for consistent and predictable LLM responses.
-* **Cache Busting**: Uses UUIDs to ensure request uniqueness where needed.
-* **Response Validation**: Implements multi-layer JSON parsing.
-* **Prompt Engineering**: Constructs context-aware prompts for more accurate results.
+* **Structured Output**: Enforces a JSON schema for consistent, predictable LLM responses.
+* **Cache Busting**: Utilizes UUIDs to guarantee request uniqueness where necessary.
+* **Response Validation**: Implements multi-layer JSON parsing for strict type safety.
+* **Prompt Engineering**: Constructs dynamic, context-aware prompts to maximize output accuracy.
 
 ---
 
-## 📄 Document Processing Pipeline
+## Document Processing Pipeline
 
-The system will support the following files for text extraction:
+The system supports the following files for text extraction:
+
 **File Type Support Matrix:**
 ```rust
 match ext.as_str() {
@@ -185,12 +171,13 @@ match ext.as_str() {
     "txt" => extract_token_from_text(file_path),
 }
 ```
+
 ### Performance Engineering
 
-* **CPU-Aware Parallelization**: Uses `num_cpus::get()` to spawn an optimal number of threads for processing.
-* **Memory-Safe Concurrency**: Leverages `Arc<String>` for safe, shared ownership of data across parallel tasks.
-* **Chunk-based PDF Processing**: Intelligently splits large PDFs into chunks to be processed in parallel across CPU cores.
-* **Tool Fallback Chain**: Implements a resilient processing strategy, trying `pdftk`, then `qpdf`, and finally falling back to estimation if needed.
+* **CPU-Aware Parallelization**: Utilizes `num_cpus::get()` to spawn the optimal number of processing threads based on host hardware.
+* **Memory-Safe Concurrency**: Leverages `Arc<String>` for secure, shared data ownership across parallel task executions.
+* **Chunk-based PDF Processing**: Intelligently partitions large PDFs into subsets for concurrent processing across CPU cores.
+* **Tool Fallback Chain**: Implements a highly resilient processing strategy, prioritizing `pdftk`, failing over to `qpdf`, and relying on estimation techniques as a final resort.
 
 ### PDF Processing
 ```rust
@@ -202,26 +189,27 @@ let page_ranges: Vec<(usize, usize)> = (0..num_cores)
     })
     .collect();
 ```
-### Optical Character Recognition
 
-The system also uses OCR to parse text from images or `pptx` files
+### Optical Character Recognition (OCR)
+
+The system deploys an OCR pipeline to parse text from image assets and `.pptx` presentations.
 
 **Multi-Tool Pipeline:**
-* **Primary**: `ImageMagick` direct conversion.
-* **Fallback**: A `LibreOffice` → PDF → Images chain.
-* **OCR Engine**: Uses `ocrs-cli` for the final text extraction.
-* **Format Chain**: A dedicated PPTX → Images → OCR → Text chain.
+* **Primary Route**: Direct conversion via `ImageMagick`.
+* **Fallback Route**: A `LibreOffice` → PDF → Images sequence.
+* **OCR Engine**: Employs `ocrs-cli` for terminal text extraction.
+* **Format Chain**: A dedicated PPTX → Images → OCR → Text conversion path.
 
 **Quality Optimization:**
-* **DPI Settings**: Balances quality vs. speed with a `150 DPI` setting.
-* **Background Processing**: Enforces a white background and alpha removal for better accuracy.
-* **Slide Preservation**: Maintains original slide order and numbering throughout the process.
+* **DPI Settings**: Calibrated to 150 DPI to balance processing speed with extraction accuracy.
+* **Background Processing**: Enforces white backgrounds and alpha channel removal for superior OCR legibility.
+* **Slide Preservation**: Strictly maintains original slide order and numbering throughout processing phases.
 
 ---
 
-## 🌐 Server Architecture & API Design
+## Server Architecture & API Design
 
-The server implements intelligent request routing and security.
+The server implements intelligent request routing combined with edge-level security.
 
 **Security Middleware:**
 ```rust
@@ -232,28 +220,28 @@ if auth.is_none() || !auth.unwrap().starts_with("Bearer ") {
 }
 ```
 
-* **URL-to-Filename Generation**: Intelligently detects file types from URLs.
-* **Special Endpoint Handling**: Dedicated logic for handling endpoints in documents.
-* **File Existence Checking**: Avoids redundant downloads by checking for existing vectors in the database first.
+* **URL-to-Filename Generation**: Algorithmically detects and assigns file extensions from raw URLs.
+* **Special Endpoint Handling**: Contains dedicated business logic for parsing endpoints directly from documents.
+* **File Existence Checking**: Preemptively checks the database for existing vectors to eliminate redundant bandwidth and API usage.
 
 **Advanced Features:**
-* **Final Challenge Detection**: Special handling for contest-specific files.
-* **Error Response Standardization**: Returns errors in a consistent JSON format.
-* **Performance Monitoring**: Includes request timing and logging for observability.
+* **Final Challenge Detection**: Customized logic pathways for contest-specific files.
+* **Error Response Standardization**: Returns all errors in a strictly standardized JSON format for predictable client handling.
+* **Performance Monitoring**: Integrates request timing and granular logging for full system observability.
 
 ---
 
+## Interactive Management Console
 
-This module provides a user-friendly, menu-driven interface for managing the server.
+Provides a user-friendly, menu-driven interface for direct server administration.
 
-**Menu-Driven Architecture:**
-* **Graceful Shutdown**: Handles `Ctrl+C` for proper cleanup before exiting.
-* **Server Management**: Allows starting and stopping the server with status monitoring.
-* **Error Recovery**: Robustly handles invalid user input without crashing.
+* **Graceful Shutdown**: Intercepts `Ctrl+C` commands to ensure proper memory cleanup and transaction completion before exit.
+* **Server Management**: Facilitates straightforward starting and stopping of the server, alongside live status monitoring.
+* **Error Recovery**: Robustly captures and handles invalid standard input without initiating process panics.
 
 ---
 
-## 🚀 Advanced Technical Patterns
+## Advanced Technical Patterns
 
 ### Async Programming Mastery
 
@@ -263,9 +251,9 @@ tokio::task::spawn_blocking(move || extract_file_text_sync(&file_path)).await?
 ```
 
 **Concurrency Patterns:**
-* **Stream Processing**: Uses `buffer_unordered(PARALLEL_REQS)` for high-throughput, parallel stream processing.
-* **Future Composition**: Employs `tokio::select!` for gracefully handling multiple asynchronous operations, such as a task and a shutdown signal.
-* **Blocking Task Spawning**: Correctly offloads CPU-bound work to a dedicated thread pool to avoid blocking the async runtime.
+* **Stream Processing**: Uses `buffer_unordered(PARALLEL_REQS)` for high-throughput, parallelized stream execution.
+* **Future Composition**: Employs `tokio::select!` to orchestrate multiple asynchronous operations gracefully, such as coordinating active tasks with shutdown signals.
+* **Blocking Task Spawning**: Systematically offloads CPU-bound operations to a dedicated thread pool, protecting the async runtime from blocking.
 
 ### Database Architecture
 
@@ -277,102 +265,104 @@ static DB_POOL: Lazy<Pool> = Lazy::new(|| {
 });
 ```
 **Performance Optimizations:**
-* **Batch Insertions**: Commits multiple embeddings in a single transaction for efficiency.
-* **Index Strategy**: Uses dedicated indexes like `idx_pdf_filename` and `idx_chunk_index` for fast lookups.
-* **JSON Storage**: Uses MySQL's native `JSON` data type for optimal embedding storage and retrieval.
+* **Batch Insertions**: Commits multiple embedding records within single transactions to minimize overhead.
+* **Index Strategy**: Deploys targeted indexes such as `idx_pdf_filename` and `idx_chunk_index` to guarantee rapid data retrieval.
+* **JSON Storage**: Native utilization of MySQL's `JSON` data type for streamlined embedding storage and extraction.
 
 ### Memory Management & Safety
 **Rust Best Practices:**
-* **RAII Pattern**: Guarantees automatic cleanup of temporary files and other resources when they go out of scope.
-* **`Arc<T>`**: Employs `Arc` for safe, shared ownership of data in parallel processing contexts.
-* **`Result<T, E>`**: Uses comprehensive error propagation throughout the application for robust failure handling.
-* **`Option<T>`**: Ensures null safety across the entire codebase.
+* **RAII Pattern**: Guarantees deterministic, automatic cleanup of temporary files and system resources upon scope exit.
+* **`Arc<T>`**: Employs Atomic Reference Counting (`Arc`) for thread-safe data access across parallel execution environments.
+* **`Result<T, E>`**: Implements exhaustive error propagation throughout the stack for reliable failure handling.
+* **`Option<T>`**: Ensures rigorous null safety and state verification across the entire codebase.
 
 ---
 
-## 🛡️ Security & Reliability Features
+## Security & Reliability Features
 
 ### Multi-Layer Security
-* **Input Sanitization**: Defends against prompt injection attacks.
-* **File Type Validation**: Uses a whitelist-based approach for processing file types.
-* **Payload Limits**: Enforces request limits (e.g., 35KB on embeddings) for staying within API limits. This can be removed for a big performance gain.
-* **SQL Injection Prevention**: Exclusively uses parameterized queries to protect the database.
+* **Input Sanitization**: Actively defends against sophisticated prompt injection attack vectors.
+* **File Type Validation**: Enforces a strict whitelist-based approach for allowable processing formats.
+* **Payload Limits**: Restricts request sizes (e.g., 35KB on embeddings) to comply with API constraints. These thresholds can be adjusted based on host infrastructure capacity to scale throughput.
+* **SQL Injection Prevention**: Exclusively utilizes parameterized database queries to secure the data layer.
 
 ### Error Handling Strategy
 **Graceful Degradation:**
-* **Tool Fallbacks**: Implements a chain of multiple OCR and file conversion tools to maximize success rates.
-* **File Recovery**: Reuses existing files to recover from partial processing failures.
-* **API Resilience**: Provides proper HTTP status codes and clear, standardized error messages.
+* **Tool Fallbacks**: Implements a cascading chain of OCR and conversion tools to maximize processing success rates.
+* **File Recovery**: Systematically reuses valid intermediate files to recover from partial pipeline failures.
+* **API Resilience**: Guarantees standard HTTP status codes accompanied by clear, actionable error messaging.
 
 ---
 
-## 📊 Performance Characteristics
+## Performance Characteristics
 
 ### Scalability Metrics
-* **Concurrent Embeddings**: Processes up to **50 parallel requests** This is of course, limited by the API rate limits. Removing it will improve performance greatly.
-* **Chunk Processing**: Utilizes CPU-core optimized parallel processing for large PDFs.
-* **Database & Caching**: Leverages connection pooling and file caching to maximize token use and be as efficient as possible.
+* **Concurrent Embeddings**: Processes up to 50 parallel requests. Overall throughput is currently bound by API rate limits; elevating these limits will yield linear performance scaling.
+* **Chunk Processing**: Fully utilizes CPU-core optimized parallelization for rapid processing of high-volume PDFs.
+* **Database & Caching**: Leverages persistent connection pooling and aggressive file caching to maximize token efficiency and minimize latency.
 
 ### Quality Thresholds
-* **Relevance Filter**: A `0.5` cosine similarity score is the minimum for context retrieval.
-* **Context Window**: Uses the **top 10** chunks to provide optimal context to the LLM. A higher context window increases accuracy even further.
-* **OCR Quality**: Balances speed and accuracy with a `150 DPI` setting.
+* **Relevance Filter**: Mandates a 0.5 minimum cosine similarity score to qualify context for retrieval.
+* **Context Window**: Aggregates the top 10 most relevant chunks to supply optimal context to the LLM. Expanding this window further increases granular accuracy.
+* **OCR Quality**: Operates at 150 DPI to establish an optimal baseline between processing duration and text accuracy.
 
 ---
 
-## 🎯 Production-Ready Features
+## Production-Ready Features
 
-* **Stateless Design**: Each request is independent, making it easy to scale and multithread.
-* **Observability**: Includes comprehensive logging and timing measurements for every case.
-* **Configuration**: All configuration is managed via environment variables for easy deployment.
-* **Resource Management**: Temporary files are cleaned up automatically via the RAII pattern.
-* **API Standards**: Adheres to RESTful design principles with proper HTTP semantics.
+* **Stateless Design**: Ensures each request is entirely independent, facilitating seamless multithreading and horizontal scalability.
+* **Observability**: Incorporates comprehensive logging pipelines and precise timing measurements for analytical review.
+* **Configuration**: Centralizes all runtime configurations via environment variables to simplify deployment pipelines.
+* **Resource Management**: Automates the purging of temporary files via strict adherence to the RAII pattern.
+* **API Standards**: Strictly adheres to RESTful design principles and semantic HTTP operations.
 
 ---
 
-## What is Unique here then?
+## Key Differentiators
 
-* **Built in Rust**: We chose rust to make the API as fast as possible.
-* **Persistent Vector Store**: The MySQL Database is perfect for company level usage of the system, where a document is queried constantly by both employees and clients.
-* **Handles all Documents**: A chain of tools with fallbacks ensures that the system handles as many document types as possible.
-* **Context-Aware Embedding**: Combines multiple questions into a single embedding for token efficiency. 
-* **Prompt Injection Protecton**: Features prompt injection protection.
------
-## Get It Running
+* **Built in Rust**: Engineered in Rust to guarantee optimal processing speeds, strict memory safety, and minimal system latency.
+* **Persistent Vector Store**: Utilizes a MySQL backend, providing a robust architecture for enterprise-level document querying by broad user bases.
+* **Comprehensive Document Handling**: A sophisticated chain of tools with automated fallbacks guarantees support for an exceptionally wide spectrum of document formats.
+* **Context-Aware Embedding**: Consolidates multiple concurrent queries into unified embeddings to drastically improve API token efficiency. 
+* **Prompt Injection Protection**: Integrates rigorous algorithmic sanitization protocols to defend the LLM against malicious inputs.
 
-### 1\. Install Rust
+---
+
+## Installation and Setup Guide
+
+### 1. Install Rust
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf [https://sh.rustup.rs](https://sh.rustup.rs) | sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-### 2\. Install System Dependencies
+### 2. Install System Dependencies
 
-This command is for Debian/Ubuntu-based systems.
+Execute the following on Debian/Ubuntu-based distributions to prepare the host environment:
 
 ```bash
 sudo apt-get update
 sudo apt-get install pdftk-java qpdf poppler-utils libglib2.0-dev libcairo2-dev libpoppler-glib-dev bc libreoffice imagemagick
 ```
 
-### 3\. Install Rust Tools
+### 3. Install Rust Tools
 
 ```bash
 cargo install miniserve
 cargo install ocrs-cli --locked
 ```
 
-### 4\. Configure Environment
+### 4. Configure Environment
 
-Create a `.env` file from the example:
+Initialize the environment variable file from the provided template:
 
 ```bash
 cp .envexample .env
 ```
 
-### 5\. Setup Database
+### 5. Setup Database
 
-Create a MySQL database and run the following schema:
+Deploy a MySQL database instance and execute the following schema initialization:
 
 ```sql
 CREATE TABLE pdf_embeddings (
@@ -387,22 +377,22 @@ CREATE TABLE pdf_embeddings (
 );
 ```
 
-Then, populate your `.env` file with the database connection string and your Gemini API key:
+Next, update your `.env` file with the appropriate database connection string and your Gemini API credentials:
 
 ```ini
 MYSQL_CONNECTION=mysql://username:password@localhost:3306/your_database
 GEMINI_KEY=your_gemini_api_key
 ```
 
-### 6\. Run the Application
+### 6. Run the Application
 
 ```bash
 cargo run
 ```
 
-### 7\. Testing
+### 7. Testing
 
-The repository includes three scripts with  various payloads to test the API with different document types:
+The repository includes three automated shell scripts designed to test the API endpoint against various payload types and document formats:
 
 ```bash
 ./test.sh
@@ -410,12 +400,14 @@ The repository includes three scripts with  various payloads to test the API wit
 ./simr4.sh
 ```
 
------
+---
 
-## 🔧 Requirements
+## Requirements
 
-  * Rust (latest stable)
-  * MySQL database
-  * Google Gemini API key
-  * System packages for document processing (listed in step 2)
-  * OCR tools for image text extraction (listed in step 3)
+* Rust (latest stable release)
+* MySQL database instance
+* Google Gemini API key
+* Host system packages for document processing (detailed in Step 2)
+* OCR CLI tools for image text extraction (detailed in Step 3)
+
+***
