@@ -1,2 +1,5 @@
 GEMINI_KEY=
-MYSQL_CONNECTION=
+QDRANT_URL=https://your-cluster.cloud.qdrant.io:6334
+QDRANT_API_KEY=
+QDRANT_COLLECTION=rag_embeddings
+SERVER_PORT=8000

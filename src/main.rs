@@ -1,79 +1,90 @@
+mod config;
+mod error;
 mod server;
-mod pdf;
 mod ai;
 mod ocr;
-mod final_challenge;
+mod extraction;
+mod vectordb;
+mod pipeline;
 
-use axum::{
-    routing::post,
-    Router,
-};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
-use std::io::{self, Write};
+
+use crate::ai::gemini::GeminiProvider;
+use crate::config::Config;
+use crate::extraction::docx::DocxExtractor;
+use crate::extraction::image::ImageExtractor;
+use crate::extraction::libreoffice::LibreOfficeExtractor;
+use crate::extraction::pdf::PdfExtractor;
+use crate::extraction::pptx::PptxExtractor;
+use crate::extraction::text::PlainTextExtractor;
+use crate::extraction::xlsx::XlsxExtractor;
+use crate::pipeline::Pipeline;
+use crate::vectordb::qdrant::QdrantStore;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    loop {
-        println!("==== HackRX API Menu ====");
-        println!("1. Start Server");
-        println!("2. Show Server Status (placeholder)");
-        println!("3. Exit");
-        print!("Enter your choice: ");
-        io::stdout().flush()?; // flush to ensure prompt appears
+    let config = Config::from_env().map_err(|e| anyhow::anyhow!("Config error: {}", e))?;
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let choice = input.trim();
+    println!("Initializing Qdrant vector store...");
+    let vector_store = QdrantStore::new(
+        &config.qdrant_url,
+        &config.qdrant_api_key,
+        &config.qdrant_collection,
+        768,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to initialize Qdrant: {}", e))?;
 
-        match choice {
-            "1" => {
-                println!("Starting server on http://0.0.0.0:8000 ... Press Ctrl+C to stop.");
+    println!("Initializing Gemini provider...");
+    let gemini = GeminiProvider::new(config.gemini_key.clone());
 
-                // Spawn server task with a shutdown signal for clean exit
-                let app = Router::new().route("/api/v1/hackrx/run", post(server::hackrx_run));
-                let addr: SocketAddr = "0.0.0.0:8000".parse()?;
-                let listener = TcpListener::bind(addr).await?;
+    let extractors: Vec<Box<dyn extraction::TextExtractor>> = vec![
+        Box::new(PdfExtractor),
+        Box::new(DocxExtractor),
+        Box::new(XlsxExtractor),
+        Box::new(PptxExtractor),
+        Box::new(PlainTextExtractor),
+        Box::new(ImageExtractor),
+        Box::new(LibreOfficeExtractor),
+    ];
 
-                // Use a one-shot channel for shutdown signal (not hooked here, but ready to use)
-                let (_shutdown_tx, _shutdown_rx) = oneshot::channel::<()>();
+    let pipeline = Arc::new(Pipeline::new(
+        config.clone(),
+        Box::new(vector_store),
+        Box::new(gemini.clone()),
+        Box::new(gemini),
+        extractors,
+    ));
 
-                // Run server in current task - this will block until Ctrl+C or shutdown signal
-                println!("Server running... Press Ctrl+C to stop.");
+    server::handlers::set_pipeline(pipeline);
 
-                let server = axum::serve(listener, app);
+    let port = config.server_port;
+    println!(
+        "Starting server on http://0.0.0.0:{} ... Press Ctrl+C to stop.",
+        port
+    );
 
-                // Await the server future or a Ctrl+C signal for graceful shutdown
-                tokio::select! {
-                    res = server => {
-                        if let Err(err) = res {
-                            eprintln!("Server error: {}", err);
-                        }
-                    }
-                    _ = tokio::signal::ctrl_c() => {
-                        println!("Ctrl+C received, shutting down...");
-                    }
-                }
+    let app = server::create_router();
+    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    let listener = TcpListener::bind(addr).await?;
 
-                // At this point, the server has stopped, so back to menu
-            }
-            "2" => {
-                println!("Server status feature not implemented yet.");
-                // You can add any other functionality here
-            }
-            "3" => {
-                println!("Exiting program. Goodbye!");
-                break; // exit loop and program
-            }
-            _ => {
-                println!("Invalid option, please enter 1, 2 or 3.");
+    println!("Server running... Press Ctrl+C to stop.");
+
+    let server = axum::serve(listener, app);
+
+    tokio::select! {
+        res = server => {
+            if let Err(err) = res {
+                eprintln!("Server error: {}", err);
             }
         }
-
-        println!(); // blank line for readability
+        _ = tokio::signal::ctrl_c() => {
+            println!("Ctrl+C received, shutting down...");
+        }
     }
 
     Ok(())

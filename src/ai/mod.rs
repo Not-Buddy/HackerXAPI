@@ -1,2 +1,4 @@
+pub mod traits;
 pub mod gemini;
-pub mod embed;
+pub mod chunking;
+pub mod embedding;
