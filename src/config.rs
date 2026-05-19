@@ -7,6 +7,9 @@ pub struct Config {
     pub qdrant_api_key: String,
     pub qdrant_collection: String,
     pub server_port: u16,
+    pub chunk_size: usize,
+    pub top_k: usize,
+    pub similarity_threshold: f32,
 }
 
 impl Config {
@@ -19,7 +22,6 @@ impl Config {
         let mut qdrant_url = env::var("QDRANT_URL")
             .unwrap_or_else(|_| "http://localhost:6334".to_string());
 
-        // Qdrant Cloud gRPC requires port 6334; append if missing on cloud hosts
         if qdrant_url.contains("cloud.qdrant.io") && !qdrant_url.contains(":633") {
             qdrant_url.push_str(":6334");
         }
@@ -35,12 +37,30 @@ impl Config {
             .parse::<u16>()
             .map_err(|e| format!("Invalid SERVER_PORT: {}", e))?;
 
+        let chunk_size = env::var("CHUNK_SIZE")
+            .unwrap_or_else(|_| "8000".to_string())
+            .parse::<usize>()
+            .unwrap_or(8000);
+
+        let top_k = env::var("TOP_K")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<usize>()
+            .unwrap_or(10);
+
+        let similarity_threshold = env::var("SIMILARITY_THRESHOLD")
+            .unwrap_or_else(|_| "0.3".to_string())
+            .parse::<f32>()
+            .unwrap_or(0.3);
+
         Ok(Self {
             gemini_key,
             qdrant_url,
             qdrant_api_key,
             qdrant_collection,
             server_port,
+            chunk_size,
+            top_k,
+            similarity_threshold,
         })
     }
 }

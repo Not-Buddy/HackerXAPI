@@ -1,13 +1,21 @@
 pub mod download;
 pub mod url;
 
+use std::time::Duration;
+
 use crate::ai::traits::{EmbeddingProvider, LlmProvider};
 use crate::config::Config;
 use crate::error::Result;
 use crate::extraction::TextExtractor;
 use crate::vectordb::{ChunkEmbedding, VectorStore};
 
-const CHUNK_SIZE: usize = 33000;
+/// Counters for per-request API call logging
+#[derive(Default)]
+pub struct ApiCounters {
+    pub embed_calls: usize,
+    pub llm_calls: usize,
+    pub retries: usize,
+}
 
 pub struct Pipeline {
     config: Config,
@@ -32,6 +40,18 @@ impl Pipeline {
             llm_provider,
             extractors,
         }
+    }
+
+    pub fn chunk_size(&self) -> usize {
+        self.config.chunk_size
+    }
+
+    pub fn top_k(&self) -> usize {
+        self.config.top_k
+    }
+
+    pub fn threshold(&self) -> f32 {
+        self.config.similarity_threshold
     }
 
     pub async fn process_document(&self, url: &str) -> Result<String> {
@@ -68,63 +88,87 @@ impl Pipeline {
     fn chunk_text(&self, text: &str) -> Vec<String> {
         text.chars()
             .collect::<Vec<char>>()
-            .chunks(CHUNK_SIZE)
+            .chunks(self.config.chunk_size)
             .map(|chunk| chunk.iter().collect::<String>())
             .filter(|chunk| !chunk.trim().is_empty())
             .collect()
     }
 
-    pub async fn embed_and_store(&self, doc_id: &str, text: &str) -> Result<Vec<(String, Vec<f32>)>> {
+    pub async fn embed_and_store(
+        &self,
+        doc_id: &str,
+        text: &str,
+    ) -> Result<(Vec<(String, Vec<f32>)>, ApiCounters)> {
+        let mut counters = ApiCounters::default();
+
         if self.vector_store.embeddings_exist(doc_id).await? {
             let stored = self.vector_store.get_embeddings(doc_id).await?;
-            return Ok(stored
+            return Ok((stored
                 .into_iter()
                 .map(|c| (c.chunk_text, c.embedding))
-                .collect());
+                .collect(), counters));
         }
 
         let chunks = self.chunk_text(text);
+        let total = chunks.len();
         let mut chunk_embeddings: Vec<ChunkEmbedding> = Vec::new();
 
         for (i, chunk) in chunks.iter().enumerate() {
             let embedding = self.embed_provider.embed(chunk).await?;
+            counters.embed_calls += 1;
+
             chunk_embeddings.push(ChunkEmbedding {
                 chunk_text: chunk.clone(),
                 chunk_index: i as u32,
                 embedding,
             });
+
+            // Throttle: stay under 300 RPM (~5 calls/sec)
+            if i + 1 < total {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
         }
+
+        // Throttle between last embed and next API call
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         self.vector_store
             .store_embeddings(doc_id, &chunk_embeddings)
             .await?;
 
-        Ok(chunk_embeddings
+        Ok((chunk_embeddings
             .into_iter()
             .map(|c| (c.chunk_text, c.embedding))
-            .collect())
+            .collect(), counters))
     }
 
     pub async fn search_similar(
         &self,
         question: &str,
-        top_k: usize,
-        threshold: f32,
-    ) -> Result<Vec<String>> {
+    ) -> Result<(Vec<String>, ApiCounters)> {
+        let mut counters = ApiCounters::default();
+
         let embedding = self.embed_provider.embed(question).await?;
+        counters.embed_calls += 1;
+
         let results = self
             .vector_store
-            .search_similar(&embedding, top_k, threshold)
+            .search_similar(&embedding, self.config.top_k, self.config.similarity_threshold)
             .await?;
 
-        Ok(results.into_iter().map(|s| s.chunk_text).collect())
+        // Throttle between search embed and LLM call
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        Ok((results.into_iter().map(|s| s.chunk_text).collect(), counters))
     }
 
     pub async fn generate_answer(
         &self,
         context: &str,
         questions: &[String],
-    ) -> Result<Vec<String>> {
+    ) -> Result<(Vec<String>, ApiCounters)> {
+        let mut counters = ApiCounters::default();
+
         let questions_joined = questions.join(", ");
         let prompt = format!(
             "\
@@ -161,6 +205,8 @@ The questions are separated by commas:
         });
 
         let raw = self.llm_provider.generate(&prompt, Some(response_schema)).await?;
+        counters.llm_calls += 1;
+
         let parsed: serde_json::Value =
             serde_json::from_str(&raw).map_err(|e| crate::error::AppError::Json(e))?;
 
@@ -174,6 +220,6 @@ The questions are separated by commas:
             })
             .unwrap_or_default();
 
-        Ok(answers)
+        Ok((answers, counters))
     }
 }

@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use qdrant_client::config::QdrantConfig;
 use qdrant_client::qdrant::{
-    point_id, vector, vectors, vectors_output, Condition, CreateCollectionBuilder, DenseVector,
-    Distance, Filter, PointId, PointStruct, RetrievedPoint, ScrollPointsBuilder,
-    SearchPointsBuilder, UpsertPointsBuilder, Vector, VectorParamsBuilder, Vectors,
+    point_id, vector, vectors, vectors_output, Condition, CreateCollectionBuilder,
+    CreateFieldIndexCollectionBuilder, DenseVector, Distance, FieldType, Filter, PointId,
+    PointStruct, RetrievedPoint, ScrollPointsBuilder, SearchPointsBuilder,
+    UpsertPointsBuilder, Vector, VectorParamsBuilder, Vectors,
 };
 use qdrant_client::{Payload, Qdrant};
 
@@ -46,6 +47,18 @@ impl QdrantStore {
                 .await
                 .map_err(|e| AppError::VectorStore(e.to_string()))?;
         }
+
+        // Create payload index on doc_id for filtering (idempotent)
+        let _ = client
+            .create_field_index(
+                CreateFieldIndexCollectionBuilder::new(
+                    collection_name.to_string(),
+                    "doc_id",
+                    FieldType::Keyword,
+                )
+                .build(),
+            )
+            .await;
 
         Ok(Self {
             client,

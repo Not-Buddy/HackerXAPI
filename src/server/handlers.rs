@@ -8,7 +8,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::pipeline::Pipeline;
+use crate::pipeline::{ApiCounters, Pipeline};
+use crate::server::auth;
 
 static PIPELINE: OnceLock<Arc<Pipeline>> = OnceLock::new();
 
@@ -31,19 +32,21 @@ pub struct AnswersResponse {
     pub answers: Vec<String>,
 }
 
-pub async fn hackrx_run(
+pub async fn query(
     headers: HeaderMap,
     Json(body): Json<QuestionRequest>,
 ) -> Result<Json<AnswersResponse>, Response> {
     let start_time = Instant::now();
-    println!("Received request with documents URL: {}", body.documents);
+    let mut total = ApiCounters::default();
 
-    let auth = headers
-        .get("authorization")
-        .and_then(|value| value.to_str().ok());
+    println!(
+        "[req   ]  START  url={}  questions={}",
+        body.documents,
+        body.questions.len()
+    );
 
-    if auth.is_none() || !auth.unwrap().starts_with("Bearer ") {
-        println!("Request rejected: Missing or invalid Authorization token");
+    if auth::extract_bearer_token(&headers).is_none() {
+        println!("[req   ]  REJECT  Missing Authorization token");
         return Err((
             StatusCode::UNAUTHORIZED,
             "Missing or invalid Authorization token",
@@ -63,7 +66,7 @@ pub async fn hackrx_run(
         .await
         .map(|filename| format!("pdfs/{}", filename))
         .map_err(|e| {
-            println!("Failed to generate filename from URL: {}", e);
+            println!("[req   ]  FAIL  Bad URL: {}", e);
             let error_response = AnswersResponse {
                 answers: vec!["Sorry we do not support the file format that you uploaded".to_string()],
             };
@@ -75,10 +78,8 @@ pub async fn hackrx_run(
         .and_then(|n| n.to_str())
         .unwrap_or("document");
 
-    println!("Target file path: {}, doc_id: {}", permpath, doc_id);
-
     let extracted_text = pipeline.process_document(&body.documents).await.map_err(|e| {
-        println!("Failed to process document: {}", e);
+        println!("[req   ]  FAIL  Extract: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Document processing error: {}", e),
@@ -86,34 +87,33 @@ pub async fn hackrx_run(
             .into_response()
     })?;
 
-    println!("Extracted {} characters of text", extracted_text.len());
-
-    pipeline.embed_and_store(doc_id, &extracted_text).await.map_err(|e| {
-        println!("Failed to embed document: {}", e);
+    let (chunk_embeddings, c) = pipeline.embed_and_store(doc_id, &extracted_text).await.map_err(|e| {
+        println!("[req   ]  FAIL  Embed: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Embedding error: {}", e),
         )
             .into_response()
     })?;
-
-    println!("Processing questions and preparing answers...");
+    total.embed_calls += c.embed_calls;
+    total.retries += c.retries;
 
     let combined_questions = body.questions.join(" ");
-    let relevant_chunks = pipeline
-        .search_similar(&combined_questions, 10, 0.3)
+    let (relevant_chunks, c) = pipeline
+        .search_similar(&combined_questions)
         .await
         .map_err(|e| {
-            println!("Failed to search context: {}", e);
+            println!("[req   ]  FAIL  Search: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Search error: {}", e),
             )
                 .into_response()
         })?;
+    total.embed_calls += c.embed_calls;
 
     let context = if relevant_chunks.is_empty() {
-        extracted_text
+        extracted_text.clone()
     } else {
         relevant_chunks.join("\n\n---\n\n")
     };
@@ -121,22 +121,30 @@ pub async fn hackrx_run(
     let contextfiltered_filename = format!("pdfs/{}_contextfiltered.txt", doc_id);
     let _ = std::fs::write(&contextfiltered_filename, &context);
 
-    println!("Policy file rewritten with question contexts");
-
-    let answers = pipeline
+    let (answers, c) = pipeline
         .generate_answer(&context, &body.questions)
         .await
         .map_err(|e| {
+            println!("[req   ]  FAIL  LLM: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Answering questions error: {}", e),
             )
                 .into_response()
         })?;
+    total.llm_calls += c.llm_calls;
+    total.retries += c.retries;
 
+    let elapsed = start_time.elapsed();
     println!(
-        "Request processed successfully in {:?}. Sending response.",
-        start_time.elapsed()
+        "[req   ]  DONE  doc={}  chars={}  chunks={}  embed={}  llm={}  retries={}  {:?}",
+        doc_id,
+        extracted_text.len(),
+        chunk_embeddings.len(),
+        total.embed_calls,
+        total.llm_calls,
+        total.retries,
+        elapsed,
     );
 
     Ok(Json(AnswersResponse { answers }))

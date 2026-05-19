@@ -359,31 +359,6 @@ Initialize the environment variable file from the provided template:
 ```bash
 cp .envexample .env
 ```
-
-### 5. Setup Database
-
-Deploy a MySQL database instance and execute the following schema initialization:
-
-```sql
-CREATE TABLE pdf_embeddings (
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    pdf_filename VARCHAR(255) NOT NULL,
-    chunk_text TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    embedding JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_pdf_filename (pdf_filename),
-    INDEX idx_chunk_index (chunk_index)
-);
-```
-
-Next, update your `.env` file with the appropriate database connection string and your Gemini API credentials:
-
-```ini
-MYSQL_CONNECTION=mysql://username:password@localhost:3306/your_database
-GEMINI_KEY=your_gemini_api_key
-```
-
 ### 6. Run the Application
 
 ```bash
@@ -411,3 +386,51 @@ The repository includes three automated shell scripts designed to test the API e
 * OCR CLI tools for image text extraction (detailed in Step 3)
 
 ***
+
+
+sample input/output
+Input :- 
+POST /hackrx/run
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer febc0daceda23ebce03d324301d34ad3768494f0b52a39ffb4adaf083d8f9c5c
+
+{
+    "documents": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
+    "questions": [
+        "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
+        "What is the waiting period for pre-existing diseases (PED) to be covered?",
+        "Does this policy cover maternity expenses, and what are the conditions?",
+        "What is the waiting period for cataract surgery?",
+        "Are the medical expenses for an organ donor covered under this policy?",
+        "What is the No Claim Discount (NCD) offered in this policy?",
+        "Is there a benefit for preventive health check-ups?",
+        "How does the policy define a 'Hospital'?",
+        "What is the extent of coverage for AYUSH treatments?",
+        "Are there any sub-limits on room rent and ICU charges for Plan A?"
+    ]
+}
+
+Output :- 
+{"answers":["The grace period for payment of the premium is thirty days.\n",
+"Yes, this policy covers maternity expenses. (See section 3.1.14)\n",
+"According to the policy, \"Accident means a sudden, unforeseen and involuntary event caused by external, visible and violent means.\"\n",
+"The waiting period for Pre-Existing Diseases is 36 months of continuous coverage after the date of inception of the first policy.\n",
+"The daily room charge limits for Plan A are up to 1% of the Sum Insured (SI) or the actual cost, whichever is lower.  The ICU charges are up to 2% of the SI or the actual cost, whichever is lower.\n",
+"The policy covers a post-hospitalisation period of 60 days.\n",
+"Yes, the medical expenses of an organ donor are covered, as stated in Section 3.1.7 \"Organ Transplant\".\n",
+"No, Air Ambulance is not covered under Plan A.\n","The co-payment percentage is 22.5%.\n",
+"The Free Look Period for a new policy is thirty days from the date of receipt of the policy document.\n",
+"If any claim is found to be fraudulent, or if any false statement or declaration is made or used in support of a claim, or if any fraudulent means or devices are used by the insured person or anyone acting on their behalf to obtain any benefit under the policy, all benefits under the policy and the premium paid will be forfeited. Any amount already paid against fraudulent claims must be repaid by the recipient(s) / policyholder(s), who are jointly and severally liable for such repayment to the insurer.\n",
+"No, treatment for alcoholism or drug abuse is explicitly excluded under exclusion 4.12.\n",
+"The coverage limit for cataract surgery under Plan A is up to 15% of the Sum Insured or INR 60,000, whichever is lower.\n",
+"A newborn baby is automatically covered from birth under the Sum Insured available to the mother during the corresponding Policy Period, for up to 3 months of age.\n",
+"The maximum claim for infertility treatment under Plan B is INR 1,00,000.\n",
+"Yes, the policy covers HIV/AIDS treatment. Section 3.1.17 specifically addresses this: \"The Company shall indemnify the Hospital or the Insured the Medical Expenses (including Pre and Post Hospitalisation Expenses) related to following stages of HIV infection...\"\n",
+"The Sum Insured is reinstated due to a road traffic accident under the following conditions:\n\n1.  The sum insured has been exhausted because of claims arising out of any injury due to a road traffic accident during a policy year.\n2.  The Insured and/or Insured Person(s) has to subsequently incur any expenses on hospitalization due to any other disease/ injury.\n3.  The Company shall reinstate the sum insured as mentioned in the schedule.\n4.  Reinstatement is allowed only once during the policy year, and the maximum amount payable under a single claim shall not exceed the sum insured as mentioned in the schedule.\n",
+"On renewal of policies with a term of one year, a NCD of flat 5% shall be allowed on the base premium, provided claims are not reported in the expiring Policy.\n",
+"According to the document, insured persons can claim reimbursement for a health check-up at the end of a block of two continuous policy years, provided the policy has been continuously renewed with the company without a break.\n",
+"No, spectacles, contact lenses, and hearing aids are not covered. (See Section 4.27: Spectacles, contact lens, hearing aid, cochlear implants.)\n","The waiting period for treatment for joint replacement, unless it arises from an accident, is three years.\n",
+"The policy defines 'Domiciliary Hospitalisation' as:\n\n\"means medical treatment for an illness /injury which in the normal course would require care and treatment at a hospital but is actually taken while confined at home under any of the following circumstances:\n\ni. the condition of the patient is such that he/she is not in a condition to be removed to a hospital, or\nii. the patient takes treatment at home on account of non availability of bed/ room in a hospital.\"\n",
+"The time limit to submit documents for a reimbursement claim after hospitalization, pre-hospitalization expenses, and ambulance charges is within **fifteen days from the date of discharge from the hospital.**\n","No, dental treatment is not covered if it is not necessitated due to an injury. (See Section 3.1.1,vii)\n",
+"The daily hospital cash allowance for Plan C is INR 2,000, max. of 5 days.\n"]}%

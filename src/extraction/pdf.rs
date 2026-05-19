@@ -11,7 +11,7 @@ impl TextExtractor for PdfExtractor {
     }
 
     fn extract_text(&self, path: &Path) -> Result<String> {
-        let text = pdf_extract::extract_text(path).map_err(|e| {
+        let text = extract_text_quiet(path).map_err(|e| {
             AppError::Extraction(format!("PDF extraction failed: {}", e))
         })?;
 
@@ -32,4 +32,32 @@ impl TextExtractor for PdfExtractor {
 
         Ok(text)
     }
+}
+
+#[cfg(unix)]
+fn extract_text_quiet(path: &Path) -> std::result::Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    use std::os::unix::io::AsRawFd;
+
+    let devnull = std::fs::File::open("/dev/null")?;
+    let saved_out;
+    let saved_err;
+    unsafe {
+        saved_out = libc::dup(1);
+        saved_err = libc::dup(2);
+        libc::dup2(devnull.as_raw_fd(), 1);
+        libc::dup2(devnull.as_raw_fd(), 2);
+    }
+    let result = pdf_extract::extract_text(path).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>);
+    unsafe {
+        libc::dup2(saved_out, 1);
+        libc::dup2(saved_err, 2);
+        libc::close(saved_out);
+        libc::close(saved_err);
+    }
+    result
+}
+
+#[cfg(not(unix))]
+fn extract_text_quiet(path: &Path) -> std::result::Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pdf_extract::extract_text(path).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 }

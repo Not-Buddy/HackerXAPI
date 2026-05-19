@@ -11,8 +11,8 @@ static SOFFICE_AVAILABLE: OnceLock<bool> = OnceLock::new();
 
 fn soffice_available() -> bool {
     *SOFFICE_AVAILABLE.get_or_init(|| {
-        Command::new("which")
-            .arg("soffice")
+        Command::new("soffice")
+            .arg("--version")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)

@@ -3,7 +3,7 @@
 # Configuration
 FOLDER="./tests"
 BASE_URL="http://localhost:8040"   # Serve PDFs from 8040
-ENDPOINT="http://localhost:8000/api/v1/hackrx/run"
+ENDPOINT="http://localhost:8000/api/v1/rag/query"
 AUTH_TOKEN="febc0daceda23ebce03d324301d34ad3768494f0b52a39ffb4adaf083d8f9c5c"
 MINISERVE_PORT=8040
 

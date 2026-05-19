@@ -14,12 +14,13 @@ use tokio::net::TcpListener;
 use crate::ai::gemini::GeminiProvider;
 use crate::config::Config;
 use crate::extraction::docx::DocxExtractor;
-use crate::extraction::image::ImageExtractor;
+use crate::extraction::image::{self, ImageExtractor};
 use crate::extraction::libreoffice::LibreOfficeExtractor;
 use crate::extraction::pdf::PdfExtractor;
 use crate::extraction::pptx::PptxExtractor;
 use crate::extraction::text::PlainTextExtractor;
 use crate::extraction::xlsx::XlsxExtractor;
+use crate::ocr::paddle::{self, PaddleOcrEngine};
 use crate::pipeline::Pipeline;
 use crate::vectordb::qdrant::QdrantStore;
 
@@ -34,13 +35,20 @@ async fn main() -> anyhow::Result<()> {
         &config.qdrant_url,
         &config.qdrant_api_key,
         &config.qdrant_collection,
-        768,
+        3072,
     )
     .await
     .map_err(|e| anyhow::anyhow!("Failed to initialize Qdrant: {}", e))?;
 
     println!("Initializing Gemini provider...");
     let gemini = GeminiProvider::new(config.gemini_key.clone());
+
+    let model_dir = std::env::var("OCR_MODEL_DIR")
+        .unwrap_or_else(|_| "models".to_string());
+    paddle::download_models_if_needed(std::path::Path::new(&model_dir)).await?;
+    let ocr_engine = PaddleOcrEngine::new()
+        .map_err(|e| anyhow::anyhow!("OCR engine init failed: {}", e))?;
+    image::set_ocr_engine(Box::new(ocr_engine));
 
     let extractors: Vec<Box<dyn extraction::TextExtractor>> = vec![
         Box::new(PdfExtractor),
