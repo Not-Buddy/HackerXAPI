@@ -15,7 +15,6 @@ pub struct Config {
     pub auto_discover_models: bool,
 
     // Storage
-    pub storage_backend: String,        // "local" or "r2"
     pub storage_local_dir: String,      // default "./data/files"
     pub r2_account_id: Option<String>,
     pub r2_access_key: Option<String>,
@@ -72,8 +71,6 @@ impl Config {
             .parse::<bool>()
             .unwrap_or(true);
 
-        let storage_backend = env::var("STORAGE_BACKEND")
-            .unwrap_or_else(|_| "local".to_string());
         let storage_local_dir = env::var("STORAGE_LOCAL_DIR")
             .unwrap_or_else(|_| "./data/files".to_string());
         let r2_account_id = env::var("R2_ACCOUNT_ID").ok();
@@ -93,7 +90,6 @@ impl Config {
             embed_model_override,
             llm_model_override,
             auto_discover_models,
-            storage_backend,
             storage_local_dir,
             r2_account_id,
             r2_access_key,

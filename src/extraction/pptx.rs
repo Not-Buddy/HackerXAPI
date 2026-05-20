@@ -87,10 +87,7 @@ fn extract_text_from_slide_xml(xml_str: &str) -> Result<String> {
                 b"a:t" => in_text = false,
                 _ => {}
             },
-            Ok(Event::Empty(ref e)) => match e.name().as_ref() {
-                b"a:br" => output.push('\n'),
-                _ => {}
-            },
+            Ok(Event::Empty(ref e)) => if e.name().as_ref() == b"a:br" { output.push('\n') },
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(AppError::Extraction(format!(

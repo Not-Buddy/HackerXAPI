@@ -58,16 +58,19 @@ pub struct ModelListResponse {
 pub struct ModelInfo {
     pub name: String,
     #[serde(rename = "displayName")]
+    #[allow(dead_code)]
     pub display_name: String,
     #[serde(rename = "supportedGenerationMethods", default)]
     pub supported_methods: Vec<String>,
     #[serde(rename = "inputTokenLimit", default)]
     pub input_token_limit: u32,
     #[serde(rename = "outputTokenLimit", default)]
+    #[allow(dead_code)]
     pub output_token_limit: u32,
     #[serde(rename = "outputDimensionality", default)]
     pub output_dimensionality: Option<u32>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub description: String,
 }
 

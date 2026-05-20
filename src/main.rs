@@ -122,8 +122,8 @@ fn read_line(prompt: &str) -> String {
 
 async fn ask_storage(config: &Config) -> anyhow::Result<Box<dyn StorageBackend>> {
     // If STORAGE_BACKEND is explicitly set, use it without prompting
-    if let Ok(backend) = std::env::var("STORAGE_BACKEND") {
-        if !backend.is_empty() && backend != "prompt" {
+    if let Ok(backend) = std::env::var("STORAGE_BACKEND")
+        && !backend.is_empty() && backend != "prompt" {
             return match backend.as_str() {
                 "r2" => {
                     let account_id = config.r2_account_id.as_deref()
@@ -143,7 +143,6 @@ async fn ask_storage(config: &Config) -> anyhow::Result<Box<dyn StorageBackend>>
                 }
             };
         }
-    }
 
     // Interactive prompt
     println!("\nStorage backend:");

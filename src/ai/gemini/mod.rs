@@ -17,7 +17,6 @@ use models::{discover_models, pick_embed_model, pick_llm_model_interactive, find
 pub struct GeminiProvider {
     pub embed_client: EmbedClient,
     pub llm_client: LlmClient,
-    pub embed_dim: u32,
 }
 
 impl GeminiProvider {
@@ -61,7 +60,6 @@ impl GeminiProvider {
                 client,
                 model: llm_name,
             },
-            embed_dim,
         }, embed_dim as u64))
     }
 
@@ -70,7 +68,6 @@ impl GeminiProvider {
         api_key: String,
         embed_model: String,
         llm_model: String,
-        embed_dim: u32,
     ) -> Self {
         let client = build_client();
         Self {
@@ -84,7 +81,6 @@ impl GeminiProvider {
                 client,
                 model: llm_model,
             },
-            embed_dim,
         }
     }
 
@@ -115,7 +111,7 @@ impl GeminiProvider {
         println!("Embedding: {} ({} dims) [from config]", embed_model, embed_dim);
         println!("LLM: {} [from config]", llm_model);
 
-        Ok((Self::new_explicit(api_key, embed_model, llm_model, embed_dim), embed_dim as u64))
+        Ok((Self::new_explicit(api_key, embed_model, llm_model), embed_dim as u64))
     }
 }
 
@@ -123,10 +119,6 @@ impl GeminiProvider {
 impl EmbeddingProvider for GeminiProvider {
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         self.embed_client.embed(text).await
-    }
-
-    fn model_name(&self) -> &str {
-        &self.embed_client.model
     }
 }
 

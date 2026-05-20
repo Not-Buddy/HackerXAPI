@@ -55,8 +55,10 @@ fn mime_from_ext(ext: &str) -> String {
 #[async_trait]
 pub trait StorageBackend: Send + Sync {
     async fn put(&self, key: &str, data: &[u8], mime: &str) -> Result<()>;
+    #[allow(dead_code)]
     async fn get(&self, key: &str) -> Result<Vec<u8>>;
     async fn exists(&self, key: &str) -> Result<bool>;
+    #[allow(dead_code)]
     async fn delete(&self, key: &str) -> Result<()>;
     async fn get_local_path(&self, key: &str) -> Result<PathBuf>;
 }

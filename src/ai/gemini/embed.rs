@@ -84,8 +84,4 @@ impl EmbeddingProvider for EmbedClient {
             return Err(AppError::Embedding(err));
         }
     }
-
-    fn model_name(&self) -> &str {
-        &self.model
-    }
 }

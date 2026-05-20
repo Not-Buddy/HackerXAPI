@@ -125,10 +125,4 @@ impl super::OcrEngine for PaddleOcrEngine {
 
         Ok(text)
     }
-
-    fn extract_text_from_path(&self, path: &Path) -> Result<String> {
-        let image = image::open(path)
-            .map_err(|e| AppError::Ocr(format!("Failed to open image {:?}: {}", path, e)))?;
-        self.extract_text_from_image(&image)
-    }
 }

@@ -11,7 +11,9 @@ pub struct ChunkEmbedding {
 #[derive(Debug, Clone)]
 pub struct ScoredChunk {
     pub chunk_text: String,
+    #[allow(dead_code)]
     pub chunk_index: u32,
+    #[allow(dead_code)]
     pub score: f32,
 }
 

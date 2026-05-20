@@ -45,14 +45,17 @@ impl Pipeline {
         }
     }
 
+    #[allow(dead_code)]
     pub fn chunk_size(&self) -> usize {
         self.config.chunk_size
     }
 
+    #[allow(dead_code)]
     pub fn top_k(&self) -> usize {
         self.config.top_k
     }
 
+    #[allow(dead_code)]
     pub fn threshold(&self) -> f32 {
         self.config.similarity_threshold
     }
@@ -206,7 +209,7 @@ The questions are separated by commas:
         counters.llm_calls += 1;
 
         let parsed: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|e| crate::error::AppError::Json(e))?;
+            serde_json::from_str(&raw).map_err(crate::error::AppError::Json)?;
 
         let answers = parsed
             .get("answers")
