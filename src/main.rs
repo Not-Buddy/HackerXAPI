@@ -30,18 +30,25 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::from_env().map_err(|e| anyhow::anyhow!("Config error: {}", e))?;
 
-    println!("Initializing Qdrant vector store...");
+    println!("Initializing Gemini provider...");
+    let (gemini, vector_size) = GeminiProvider::from_config(
+        config.gemini_key.clone(),
+        config.embed_model_override.clone(),
+        config.llm_model_override.clone(),
+        config.auto_discover_models,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Gemini init failed: {}", e))?;
+
+    println!("Initializing Qdrant vector store (dim={})...", vector_size);
     let vector_store = QdrantStore::new(
         &config.qdrant_url,
         &config.qdrant_api_key,
         &config.qdrant_collection,
-        3072,
+        vector_size,
     )
     .await
     .map_err(|e| anyhow::anyhow!("Failed to initialize Qdrant: {}", e))?;
-
-    println!("Initializing Gemini provider...");
-    let gemini = GeminiProvider::new(config.gemini_key.clone());
 
     let model_dir = std::env::var("OCR_MODEL_DIR")
         .unwrap_or_else(|_| "models".to_string());

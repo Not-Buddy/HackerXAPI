@@ -10,6 +10,9 @@ pub struct Config {
     pub chunk_size: usize,
     pub top_k: usize,
     pub similarity_threshold: f32,
+    pub embed_model_override: Option<String>,
+    pub llm_model_override: Option<String>,
+    pub auto_discover_models: bool,
 }
 
 impl Config {
@@ -52,6 +55,17 @@ impl Config {
             .parse::<f32>()
             .unwrap_or(0.3);
 
+        let embed_model_override = env::var("EMBED_MODEL").ok()
+            .filter(|s| s != "auto" && !s.is_empty());
+
+        let llm_model_override = env::var("LLM_MODEL").ok()
+            .filter(|s| s != "prompt" && !s.is_empty());
+
+        let auto_discover_models = env::var("AUTO_DISCOVER_MODELS")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse::<bool>()
+            .unwrap_or(true);
+
         Ok(Self {
             gemini_key,
             qdrant_url,
@@ -61,6 +75,9 @@ impl Config {
             chunk_size,
             top_k,
             similarity_threshold,
+            embed_model_override,
+            llm_model_override,
+            auto_discover_models,
         })
     }
 }
