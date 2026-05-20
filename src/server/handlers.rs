@@ -62,39 +62,38 @@ pub async fn query(
             .into_response()
     })?;
 
-    let permpath = crate::pipeline::url::generate_filename_from_url(&body.documents)
+    let (stored_file, extracted_text) = pipeline
+        .process_document(&body.documents)
         .await
-        .map(|filename| format!("pdfs/{}", filename))
         .map_err(|e| {
-            println!("[req   ]  FAIL  Bad URL: {}", e);
+            println!("[req   ]  FAIL  Process: {}", e);
             let error_response = AnswersResponse {
-                answers: vec!["Sorry we do not support the file format that you uploaded".to_string()],
+                answers: vec!["Sorry we do not support the file format that you uploaded"
+                    .to_string()],
             };
             (StatusCode::BAD_REQUEST, Json(error_response)).into_response()
         })?;
 
-    let doc_id = std::path::Path::new(&permpath)
-        .file_stem()
-        .and_then(|n| n.to_str())
-        .unwrap_or("document");
+    let doc_id = stored_file.doc_id();
+    println!(
+        "[req   ]  doc_id={}  name={}  size={}  chars={}",
+        doc_id,
+        stored_file.original_name,
+        stored_file.size_bytes,
+        extracted_text.len()
+    );
 
-    let extracted_text = pipeline.process_document(&body.documents).await.map_err(|e| {
-        println!("[req   ]  FAIL  Extract: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Document processing error: {}", e),
-        )
-            .into_response()
-    })?;
-
-    let (chunk_embeddings, c) = pipeline.embed_and_store(doc_id, &extracted_text).await.map_err(|e| {
-        println!("[req   ]  FAIL  Embed: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Embedding error: {}", e),
-        )
-            .into_response()
-    })?;
+    let (chunk_embeddings, c) = pipeline
+        .embed_and_store(&doc_id, &extracted_text)
+        .await
+        .map_err(|e| {
+            println!("[req   ]  FAIL  Embed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Embedding error: {}", e),
+            )
+                .into_response()
+        })?;
     total.embed_calls += c.embed_calls;
     total.retries += c.retries;
 
@@ -117,9 +116,6 @@ pub async fn query(
     } else {
         relevant_chunks.join("\n\n---\n\n")
     };
-
-    let contextfiltered_filename = format!("pdfs/{}_contextfiltered.txt", doc_id);
-    let _ = std::fs::write(&contextfiltered_filename, &context);
 
     let (answers, c) = pipeline
         .generate_answer(&context, &body.questions)

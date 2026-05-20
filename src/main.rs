@@ -6,7 +6,9 @@ mod ocr;
 mod extraction;
 mod vectordb;
 mod pipeline;
+mod storage;
 
+use std::io::{self, Write};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -22,10 +24,12 @@ use crate::extraction::text::PlainTextExtractor;
 use crate::extraction::xlsx::XlsxExtractor;
 use crate::ocr::paddle::{self, PaddleOcrEngine};
 use crate::pipeline::Pipeline;
+use crate::storage::StorageBackend;
 use crate::vectordb::qdrant::QdrantStore;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     tracing_subscriber::fmt::init();
 
     let config = Config::from_env().map_err(|e| anyhow::anyhow!("Config error: {}", e))?;
@@ -67,8 +71,11 @@ async fn main() -> anyhow::Result<()> {
         Box::new(LibreOfficeExtractor),
     ];
 
+    let storage = ask_storage(&config).await?;
+
     let pipeline = Arc::new(Pipeline::new(
         config.clone(),
+        storage,
         Box::new(vector_store),
         Box::new(gemini.clone()),
         Box::new(gemini),
@@ -89,10 +96,10 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Server running... Press Ctrl+C to stop.");
 
-    let server = axum::serve(listener, app);
+    let server_instance = axum::serve(listener, app);
 
     tokio::select! {
-        res = server => {
+        res = server_instance => {
             if let Err(err) = res {
                 eprintln!("Server error: {}", err);
             }
@@ -103,4 +110,66 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn read_line(prompt: &str) -> String {
+    print!("{}", prompt);
+    io::stdout().flush().ok();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok();
+    input.trim().to_string()
+}
+
+async fn ask_storage(config: &Config) -> anyhow::Result<Box<dyn StorageBackend>> {
+    // If STORAGE_BACKEND is explicitly set, use it without prompting
+    if let Ok(backend) = std::env::var("STORAGE_BACKEND") {
+        if !backend.is_empty() && backend != "prompt" {
+            return match backend.as_str() {
+                "r2" => {
+                    let account_id = config.r2_account_id.as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("R2_ACCOUNT_ID not set"))?;
+                    let access_key = config.r2_access_key.as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("R2_ACCESS_KEY_ID not set"))?;
+                    let secret_key = config.r2_secret_key.as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("R2_SECRET_ACCESS_KEY not set"))?;
+                    let bucket = config.r2_bucket.as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("R2_BUCKET not set"))?;
+                    println!("Initializing R2 storage (bucket={})...", bucket);
+                    Ok(Box::new(storage::r2::R2Storage::new(account_id, access_key, secret_key, bucket).await))
+                }
+                _ => {
+                    println!("Initializing local storage (dir={})...", config.storage_local_dir);
+                    Ok(Box::new(storage::local::LocalStorage::new(&config.storage_local_dir)))
+                }
+            };
+        }
+    }
+
+    // Interactive prompt
+    println!("\nStorage backend:");
+    println!("  1. local  — files on disk ({})", config.storage_local_dir);
+    println!("  2. R2     — Cloudflare R2 (S3-compatible)");
+    let choice = read_line("\nSelect [1-2] (default 1): ");
+
+    match choice.as_str() {
+        "2" => {
+            let account_id = read_line("  R2 Account ID: ");
+            let access_key = read_line("  R2 Access Key ID: ");
+            let secret_key = read_line("  R2 Secret Access Key: ");
+            let bucket = read_line("  R2 Bucket name [ragx-files]: ");
+            let bucket = if bucket.is_empty() { "ragx-files".to_string() } else { bucket };
+
+            if account_id.is_empty() || access_key.is_empty() || secret_key.is_empty() {
+                anyhow::bail!("R2 credentials required");
+            }
+
+            let backend = storage::r2::R2Storage::new(&account_id, &access_key, &secret_key, &bucket).await;
+            println!("R2 storage initialized (bucket={})\n", bucket);
+            Ok(Box::new(backend))
+        }
+        _ => {
+            println!("Local storage initialized (dir={})\n", config.storage_local_dir);
+            Ok(Box::new(storage::local::LocalStorage::new(&config.storage_local_dir)))
+        }
+    }
 }

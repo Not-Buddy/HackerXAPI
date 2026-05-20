@@ -13,6 +13,14 @@ pub struct Config {
     pub embed_model_override: Option<String>,
     pub llm_model_override: Option<String>,
     pub auto_discover_models: bool,
+
+    // Storage
+    pub storage_backend: String,        // "local" or "r2"
+    pub storage_local_dir: String,      // default "./data/files"
+    pub r2_account_id: Option<String>,
+    pub r2_access_key: Option<String>,
+    pub r2_secret_key: Option<String>,
+    pub r2_bucket: Option<String>,
 }
 
 impl Config {
@@ -29,9 +37,7 @@ impl Config {
             qdrant_url.push_str(":6334");
         }
 
-        let qdrant_api_key = env::var("QDRANT_API_KEY")
-            .unwrap_or_default();
-
+        let qdrant_api_key = env::var("QDRANT_API_KEY").unwrap_or_default();
         let qdrant_collection = env::var("QDRANT_COLLECTION")
             .unwrap_or_else(|_| "rag_embeddings".to_string());
 
@@ -66,6 +72,15 @@ impl Config {
             .parse::<bool>()
             .unwrap_or(true);
 
+        let storage_backend = env::var("STORAGE_BACKEND")
+            .unwrap_or_else(|_| "local".to_string());
+        let storage_local_dir = env::var("STORAGE_LOCAL_DIR")
+            .unwrap_or_else(|_| "./data/files".to_string());
+        let r2_account_id = env::var("R2_ACCOUNT_ID").ok();
+        let r2_access_key = env::var("R2_ACCESS_KEY_ID").ok();
+        let r2_secret_key = env::var("R2_SECRET_ACCESS_KEY").ok();
+        let r2_bucket = env::var("R2_BUCKET").ok();
+
         Ok(Self {
             gemini_key,
             qdrant_url,
@@ -78,6 +93,12 @@ impl Config {
             embed_model_override,
             llm_model_override,
             auto_discover_models,
+            storage_backend,
+            storage_local_dir,
+            r2_account_id,
+            r2_access_key,
+            r2_secret_key,
+            r2_bucket,
         })
     }
 }

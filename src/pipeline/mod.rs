@@ -7,9 +7,9 @@ use crate::ai::traits::{EmbeddingProvider, LlmProvider};
 use crate::config::Config;
 use crate::error::Result;
 use crate::extraction::TextExtractor;
+use crate::storage::{StorageBackend, StoredFile};
 use crate::vectordb::{ChunkEmbedding, VectorStore};
 
-/// Counters for per-request API call logging
 #[derive(Default)]
 pub struct ApiCounters {
     pub embed_calls: usize,
@@ -19,6 +19,7 @@ pub struct ApiCounters {
 
 pub struct Pipeline {
     config: Config,
+    storage: Box<dyn StorageBackend>,
     vector_store: Box<dyn VectorStore>,
     embed_provider: Box<dyn EmbeddingProvider>,
     llm_provider: Box<dyn LlmProvider>,
@@ -28,6 +29,7 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn new(
         config: Config,
+        storage: Box<dyn StorageBackend>,
         vector_store: Box<dyn VectorStore>,
         embed_provider: Box<dyn EmbeddingProvider>,
         llm_provider: Box<dyn LlmProvider>,
@@ -35,6 +37,7 @@ impl Pipeline {
     ) -> Self {
         Self {
             config,
+            storage,
             vector_store,
             embed_provider,
             llm_provider,
@@ -54,35 +57,33 @@ impl Pipeline {
         self.config.similarity_threshold
     }
 
-    pub async fn process_document(&self, url: &str) -> Result<String> {
-        let filename = url::generate_filename_from_url(url).await?;
-        let file_path = format!("pdfs/{}", filename);
+    pub async fn process_document(&self, url: &str) -> Result<(StoredFile, String)> {
+        let original_name = url::extract_filename_from_url(url)?;
 
-        if !std::path::Path::new(&file_path).exists() {
-            if let Some(parent) = std::path::Path::new(&file_path).parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            download::download_file(url, &file_path).await?;
+        let bytes = download::download_bytes(url).await?;
+        let stored = StoredFile::new(&original_name, bytes.len() as u64);
+
+        if !self.storage.exists(&stored.storage_key).await? {
+            self.storage
+                .put(&stored.storage_key, &bytes, &stored.mime_type)
+                .await?;
         }
 
-        let path = std::path::Path::new(&file_path);
-        let mut extracted = None;
+        let local_path = self.storage.get_local_path(&stored.storage_key).await?;
+        let text = self.extract_from_path(&local_path, stored.extension())?;
 
+        Ok((stored, text))
+    }
+
+    fn extract_from_path(&self, path: &std::path::Path, ext: &str) -> Result<String> {
         for extractor in &self.extractors {
-            let exts = extractor.supported_extensions();
-            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                if exts.contains(&ext) {
-                    extracted = Some(extractor.extract_text(path)?);
-                    break;
-                }
+            if extractor.supported_extensions().contains(&ext) {
+                return extractor.extract_text(path);
             }
         }
-
-        extracted.ok_or_else(|| {
-            crate::error::AppError::UnsupportedFormat(
-                "No extractor found for file format".into(),
-            )
-        })
+        Err(crate::error::AppError::UnsupportedFormat(format!(
+            "No extractor found for .{}", ext
+        )))
     }
 
     fn chunk_text(&self, text: &str) -> Vec<String> {
@@ -123,13 +124,11 @@ impl Pipeline {
                 embedding,
             });
 
-            // Throttle: stay under 300 RPM (~5 calls/sec)
             if i + 1 < total {
                 tokio::time::sleep(Duration::from_millis(250)).await;
             }
         }
 
-        // Throttle between last embed and next API call
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         self.vector_store
@@ -156,7 +155,6 @@ impl Pipeline {
             .search_similar(&embedding, self.config.top_k, self.config.similarity_threshold)
             .await?;
 
-        // Throttle between search embed and LLM call
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         Ok((results.into_iter().map(|s| s.chunk_text).collect(), counters))
