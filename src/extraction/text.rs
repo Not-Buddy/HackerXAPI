@@ -7,7 +7,7 @@ pub struct PlainTextExtractor;
 
 impl TextExtractor for PlainTextExtractor {
     fn supported_extensions(&self) -> &[&str] {
-        &["txt", "md", "csv", "json", "xml", "html"]
+        &["txt", "md"]
     }
 
     fn extract_text(&self, path: &Path) -> Result<String> {

@@ -43,6 +43,22 @@ impl GeminiProvider {
         let embed_dim = embed_model.output_dimensionality.unwrap_or(768);
         println!("Embedding: {} ({} dims) [auto-selected]", embed_model.name, embed_dim);
 
+        let embed_client = EmbedClient {
+            api_key: api_key.clone(),
+            client: client.clone(),
+            model: embed_model.name.clone(),
+        };
+
+        // Probe actual embedding dimension (API metadata can be stale)
+        let probe_vec = embed_client.embed("dimension probe").await?;
+        let actual_dim = probe_vec.len() as u64;
+        if actual_dim != embed_dim as u64 {
+            println!(
+                "  Note: API reports {} dims but actual output is {} dims — using actual.",
+                embed_dim, actual_dim
+            );
+        }
+
         // Interactive LLM selection
         let llm_name = pick_llm_model_interactive(&available_models)
             .ok_or_else(|| crate::error::AppError::Llm(
@@ -50,17 +66,13 @@ impl GeminiProvider {
             ))?;
 
         Ok((Self {
-            embed_client: EmbedClient {
-                api_key: api_key.clone(),
-                client: client.clone(),
-                model: embed_model.name.clone(),
-            },
+            embed_client,
             llm_client: LlmClient {
                 api_key: api_key.clone(),
                 client,
                 model: llm_name,
             },
-        }, embed_dim as u64))
+        }, actual_dim))
     }
 
     /// Build provider with explicit model names (no API discovery).

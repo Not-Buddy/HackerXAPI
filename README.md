@@ -15,10 +15,9 @@ A cross-platform RAG (Retrieval-Augmented Generation) pipeline in Rust. Upload d
           ▼                ▼                ▼
    ┌──────────┐    ┌──────────┐     ┌──────────┐
    │ Storage  │    │Extraction│     │ Qdrant   │
-   │ local/R2 │    │ pdf/docx │     │ Vector   │
-   │          │    │ xlsx/pptx│     │ Store    │
-   └──────────┘    │ image/txt│     └──────────┘
-                   └──────────┘
+   │ local/R2 │    │markitdown│     │ Vector   │
+   │          │    │ image/txt│     │ Store    │
+   └──────────┘    └──────────┘     └──────────┘
 ```
 
 ## Module Structure
@@ -38,13 +37,9 @@ src/
 │   └── url.rs           — extract_filename_from_url(url) → String
 ├── extraction/
 │   ├── mod.rs           — TextExtractor trait
-│   ├── pdf.rs           — pdf-extract + lopdf (pure Rust)
-│   ├── docx.rs          — zip + quick-xml (pure Rust)
-│   ├── xlsx.rs          — calamine (pure Rust)
-│   ├── pptx.rs          — zip + quick-xml (pure Rust)
-│   ├── image.rs         — image crate → OcrEngine
-│   ├── text.rs          — fs::read_to_string
-│   └── libreoffice.rs   — Optional soffice fallback
+│   ├── markitdown.rs    — Unified extractor via Python markitdown CLI
+│   ├── image.rs         — image crate → OcrEngine (PaddleOCR)
+│   └── text.rs          — fs::read_to_string (txt, md)
 ├── ocr/
 │   ├── mod.rs           — OcrEngine trait
 │   └── paddle.rs        — ocrs + rten (RTen-based OCR, auto-downloads models)
@@ -92,6 +87,7 @@ StoredFile { id: uuid, storage_key, mime_type }
 
 ### Prerequisites
 - Rust (latest stable)
+- Python 3.10+ with [markitdown](https://github.com/microsoft/markitdown): `pip install 'markitdown[all]'`
 - Qdrant (Cloud or Docker)
 - Gemini API key
 
@@ -114,19 +110,20 @@ cargo run
 
 The startup flow is interactive:
 1. Discovers available Gemini models via API
-2. Auto-selects `text-embedding-004` for embeddings (768 dims)
+2. Auto-selects embedding model and probes actual vector dimensions
 3. Prompts you to choose an LLM model from available list
 4. Prompts for storage backend (local disk or Cloudflare R2)
 5. OCR models auto-download on first run (~30MB)
+6. Verifies `markitdown` CLI is available on PATH
 
 ### Testing
 
 ```bash
 # Start the server, then in another terminal:
-./test.sh
+bash test.sh
 ```
 
-Sends PDFs from `tests/` through the API, validates JSON responses.
+Sends sample documents (PDF, DOCX, XLSX, PPTX) from `tests/` through the API, validates JSON responses. Requires `miniserve` and `jq`.
 
 ### API
 
@@ -186,7 +183,7 @@ pub trait TextExtractor: Send + Sync {
     fn extract_text(&self, path: &Path) -> Result<String>;
 }
 ```
-**Impls**: `PdfExtractor`, `DocxExtractor`, `XlsxExtractor`, `PptxExtractor`, `PlainTextExtractor`, `ImageExtractor`, `LibreOfficeExtractor` (optional).
+**Impls**: `MarkitdownExtractor` (PDF, DOCX, PPTX, XLSX, XLS, HTML, CSV, JSON, XML, EPUB via Python markitdown), `PlainTextExtractor` (TXT, MD), `ImageExtractor` (PNG, JPG, BMP, TIFF via PaddleOCR).
 
 ### OcrEngine
 ```rust
@@ -233,11 +230,11 @@ pub trait StorageBackend: Send + Sync {
 
 ## Key Features
 
-- **Pure-Rust document extraction** — PDF (`pdf-extract` + `lopdf`), DOCX (`quick-xml`), XLSX (`calamine`), PPTX (`quick-xml`), images (`ocrs` + `rten`). LibreOffice retained as optional fallback.
+- **Unified document extraction** — All major formats (PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB) handled by [markitdown](https://github.com/microsoft/markitdown), outputting structured Markdown optimized for LLM/RAG consumption. Images handled by PaddleOCR (`ocrs` + `rten`).
 - **Persistent embeddings** — Qdrant stores chunk vectors with cosine similarity search. Embeddings survive server restarts.
 - **Rate-limit resilience** — Exponential backoff with jitter, `Retry-After` header parsing, 200ms inter-chunk throttle.
 - **Structured logging** — Every API call logged with timing: `[embed] 200 OK (742ms) 8000B chunk`, `[llm] 200 OK (3240ms) 12840B prompt`. Per-request summary with call counts.
 - **UUID-based doc identity** — Files get unique UUIDs stored alongside their content. No filename collisions.
 - **Prompt injection defense** — 22-pattern regex sanitization applied to all LLM inputs.
 - **Configurable** — Everything tunable via environment variables. No recompile needed.
-- **Cross-platform** — Linux, macOS, Windows. No system packages required.
+- **Cross-platform** — Linux, macOS, Windows. Requires Python 3.10+ with markitdown.

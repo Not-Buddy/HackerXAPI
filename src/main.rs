@@ -15,13 +15,9 @@ use tokio::net::TcpListener;
 
 use crate::ai::gemini::GeminiProvider;
 use crate::config::Config;
-use crate::extraction::docx::DocxExtractor;
 use crate::extraction::image::{self, ImageExtractor};
-use crate::extraction::libreoffice::LibreOfficeExtractor;
-use crate::extraction::pdf::PdfExtractor;
-use crate::extraction::pptx::PptxExtractor;
+use crate::extraction::markitdown::MarkitdownExtractor;
 use crate::extraction::text::PlainTextExtractor;
-use crate::extraction::xlsx::XlsxExtractor;
 use crate::ocr::paddle::{self, PaddleOcrEngine};
 use crate::pipeline::Pipeline;
 use crate::storage::StorageBackend;
@@ -62,13 +58,9 @@ async fn main() -> anyhow::Result<()> {
     image::set_ocr_engine(Box::new(ocr_engine));
 
     let extractors: Vec<Box<dyn extraction::TextExtractor>> = vec![
-        Box::new(PdfExtractor),
-        Box::new(DocxExtractor),
-        Box::new(XlsxExtractor),
-        Box::new(PptxExtractor),
+        Box::new(MarkitdownExtractor),
         Box::new(PlainTextExtractor),
         Box::new(ImageExtractor),
-        Box::new(LibreOfficeExtractor),
     ];
 
     let storage = ask_storage(&config).await?;

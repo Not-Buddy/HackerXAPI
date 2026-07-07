@@ -6,10 +6,6 @@ pub trait TextExtractor: Send + Sync {
     fn extract_text(&self, path: &Path) -> Result<String>;
 }
 
-pub mod pdf;
-pub mod docx;
-pub mod xlsx;
-pub mod pptx;
+pub mod markitdown;
 pub mod image;
 pub mod text;
-pub mod libreoffice;
