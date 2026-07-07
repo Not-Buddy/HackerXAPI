@@ -41,10 +41,11 @@ async fn main() -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!("Gemini init failed: {}", e))?;
 
     println!("Initializing Qdrant vector store (dim={})...", vector_size);
+    let collection_name = format!("{}_{}", config.qdrant_collection, vector_size);
     let vector_store = QdrantStore::new(
         &config.qdrant_url,
         &config.qdrant_api_key,
-        &config.qdrant_collection,
+        &collection_name,
         vector_size,
     )
     .await
